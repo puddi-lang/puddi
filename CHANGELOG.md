@@ -4,6 +4,10 @@ All notable changes to Puddi are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Fixed
+
+- `pud` rejects unknown and empty targets in the `--target=<value>` form.
+
 ### Performance
 
 Measured with the programs in `bench/` against Rust and MoonBit; see `bench/README.md`.

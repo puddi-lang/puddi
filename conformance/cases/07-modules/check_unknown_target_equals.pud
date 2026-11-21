@@ -1,0 +1,6 @@
+// spec: 7.4
+// mode: check
+// args: --target=wasii
+// exit: 1
+//~ unknown target `wasii`; expected browser, wasi or plugin
+fn main() {}

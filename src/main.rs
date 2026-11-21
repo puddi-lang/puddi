@@ -491,11 +491,15 @@ fn main() -> ExitCode {
     let mut positional = Vec::new();
     let mut i = 0;
     while i < opts.len() {
+        let inline_target = opts[i].strip_prefix("--target=");
         match opts[i].as_str() {
-            "--target" | "-t" => {
-                i += 1;
-                match opts.get(i) {
-                    Some(t) if ["browser", "wasi", "plugin"].contains(&t.as_str()) => target = t.clone(),
+            s if matches!(s, "--target" | "-t") || inline_target.is_some() => {
+                let value = inline_target.or_else(|| {
+                    i += 1;
+                    opts.get(i).map(String::as_str)
+                });
+                match value {
+                    Some(t) if ["browser", "wasi", "plugin"].contains(&t) => target = t.to_string(),
                     Some(t) => return fail(format!("unknown target `{t}`; expected browser, wasi or plugin")),
                     None => return fail("--target needs a value"),
                 }
@@ -513,7 +517,6 @@ fn main() -> ExitCode {
                     None => return fail("-o needs a directory"),
                 }
             }
-            s if s.starts_with("--target=") => target = s["--target=".len()..].to_string(),
             s if s.starts_with('-') && s.len() > 1 => return fail(format!("unknown option `{s}`")),
             s => positional.push(s.to_string()),
         }
