@@ -1,0 +1,156 @@
+// std.encoding: hexadecimal, base64 and percent encodings over bytes.
+
+const HEX: Str = "0123456789abcdef"
+const BASE64: Str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+const BASE64_URL: Str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+@derive(Eq)
+pub struct DecodeErr {
+    pub offset: Int
+    pub reason: Str
+}
+
+impl Show for DecodeErr {
+    fn show(self) -> Str { "invalid encoding at byte {self.offset}: {self.reason}" }
+}
+
+impl Error for DecodeErr {}
+
+fn hex_digit(code: Int) -> Int {
+    if code >= 48 && code <= 57 { code - 48 }
+    else if code >= 65 && code <= 70 { code - 55 }
+    else if code >= 97 && code <= 102 { code - 87 }
+    else { -1 }
+}
+
+fn read_hex(input: Str, offset: Int) -> Result<U8, DecodeErr> {
+    if input.utf8_len() - offset < 2 {
+        return Err(DecodeErr { offset, reason: "incomplete hex byte" })
+    }
+    let high = hex_digit(__str_byte(input, offset))
+    if high < 0 { return Err(DecodeErr { offset, reason: "expected a hex digit" }) }
+    let low = hex_digit(__str_byte(input, offset + 1))
+    if low < 0 { return Err(DecodeErr { offset: offset + 1, reason: "expected a hex digit" }) }
+    Ok(((high << 4) | low).wrap_to_u8())
+}
+
+fn push_hex(out: StrBuilder, value: Int, alphabet: Str) {
+    out.push_byte(__str_byte(alphabet, value >> 4))
+    out.push_byte(__str_byte(alphabet, value & 15))
+}
+
+pub fn hex_encode(data: List<U8>) -> Str {
+    let out = StrBuilder.new()
+    for byte in data { push_hex(out, byte.wrap_to_int(), HEX) }
+    out.to_str()
+}
+
+pub fn hex_decode(input: Str) -> Result<List<U8>, DecodeErr> {
+    let data: List<U8> = List.with_capacity(input.utf8_len() / 2)
+    var offset = 0
+    while offset < input.utf8_len() {
+        data.push(read_hex(input, offset)?)
+        offset += 2
+    }
+    Ok(data)
+}
+
+fn encode64(data: List<U8>, alphabet: Str, padded: Bool) -> Str {
+    let out = StrBuilder.new()
+    var buffer = 0
+    var bits = 0
+    for byte in data {
+        buffer = (buffer << 8) | byte.wrap_to_int()
+        bits += 8
+        while bits >= 6 {
+            bits -= 6
+            out.push_byte(__str_byte(alphabet, (buffer >> bits) & 63))
+        }
+        buffer = buffer & ((1 << bits) - 1)
+    }
+    if bits > 0 { out.push_byte(__str_byte(alphabet, buffer << (6 - bits))) }
+    if padded {
+        while out.len() % 4 != 0 { out.push_byte(61) }
+    }
+    out.to_str()
+}
+
+fn base64_digit(code: Int, url: Bool) -> Int {
+    if code >= 65 && code <= 90 { return code - 65 }
+    if code >= 97 && code <= 122 { return code - 71 }
+    if code >= 48 && code <= 57 { return code + 4 }
+    if code == (if url { 45 } else { 43 }) { return 62 }
+    if code == (if url { 95 } else { 47 }) { return 63 }
+    -1
+}
+
+fn decode64(input: Str, url: Bool) -> Result<List<U8>, DecodeErr> {
+    let length = input.utf8_len()
+    var end = length
+    if !url {
+        while end > 0 && __str_byte(input, end - 1) == 61 { end -= 1 }
+        if length - end != (4 - end % 4) % 4 {
+            return Err(DecodeErr { offset: end, reason: "incorrect base64 padding" })
+        }
+    }
+    if end % 4 == 1 {
+        return Err(DecodeErr { offset: end, reason: "incomplete base64 group" })
+    }
+
+    let out: List<U8> = List.with_capacity(end / 4 * 3)
+    var buffer = 0
+    var bits = 0
+    for offset in 0..end {
+        let digit = base64_digit(__str_byte(input, offset), url)
+        if digit < 0 { return Err(DecodeErr { offset, reason: "expected a base64 digit" }) }
+        buffer = (buffer << 6) | digit
+        bits += 6
+        if bits >= 8 {
+            bits -= 8
+            out.push((buffer >> bits).wrap_to_u8())
+            buffer = buffer & ((1 << bits) - 1)
+        }
+    }
+    if buffer != 0 {
+        return Err(DecodeErr { offset: end - 1, reason: "nonzero unused base64 bits" })
+    }
+    Ok(out)
+}
+
+pub fn base64_encode(data: List<U8>) -> Str { encode64(data, BASE64, true) }
+pub fn base64_decode(input: Str) -> Result<List<U8>, DecodeErr> { decode64(input, false) }
+pub fn base64url_encode(data: List<U8>) -> Str { encode64(data, BASE64_URL, false) }
+pub fn base64url_decode(input: Str) -> Result<List<U8>, DecodeErr> { decode64(input, true) }
+
+/// Escapes every byte except ASCII letters, digits, hyphen, period, underscore and tilde.
+pub fn percent_encode(data: List<U8>) -> Str {
+    let out = StrBuilder.new()
+    for byte in data {
+        let code = byte.wrap_to_int()
+        if (code >= 65 && code <= 90) || (code >= 97 && code <= 122) ||
+            (code >= 48 && code <= 57) || code == 45 || code == 46 || code == 95 || code == 126 {
+            out.push_byte(code)
+        } else {
+            out.push_byte(37)
+            push_hex(out, code, "0123456789ABCDEF")
+        }
+    }
+    out.to_str()
+}
+
+/// Decodes percent escapes to bytes. A literal plus sign is preserved.
+pub fn percent_decode(input: Str) -> Result<List<U8>, DecodeErr> {
+    let out: List<U8> = []
+    var offset = 0
+    while offset < input.utf8_len() {
+        let code = __str_byte(input, offset)
+        if code == 37 {
+            out.push(read_hex(input, offset + 1)?)
+            offset += 3
+        } else {
+            out.push(code.wrap_to_u8())
+            offset += 1
+        }
+    }
+    Ok(out)
+}

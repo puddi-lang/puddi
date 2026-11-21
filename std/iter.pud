@@ -1,0 +1,56 @@
+// std.iter: lazy iterator sources.
+
+pub struct FromFn<T> {
+    step: fn() -> Option<T>
+    var done: Bool
+}
+
+impl<T> Iterator for FromFn<T> {
+    type Item = T
+    fn next(self) -> Option<T> {
+        if self.done { return None }
+        let value = self.step()
+        self.done = value.is_none()
+        value
+    }
+}
+
+/// Calls step on demand and stops at the first None.
+pub fn from_fn<T>(step: fn() -> Option<T>) -> FromFn<T> {
+    FromFn { step, done: false }
+}
+
+pub struct Unfold<S, T> {
+    var state: Option<S>
+    step: fn(S) -> Option<(T, S)>
+}
+
+impl<S, T> Iterator for Unfold<S, T> {
+    type Item = T
+    fn next(self) -> Option<T> {
+        let state = self.state?
+        self.state = None
+        let (value, next_state) = self.step(state)?
+        self.state = Some(next_state)
+        Some(value)
+    }
+}
+
+/// Takes a state and a step that returns the next item and state.
+pub fn unfold<S, T>(initial: S, step: fn(S) -> Option<(T, S)>) -> Unfold<S, T> {
+    Unfold { state: Some(initial), step }
+}
+
+pub struct Repeat<T> {
+    value: T
+}
+
+impl<T> Iterator for Repeat<T> {
+    type Item = T
+    fn next(self) -> Option<T> { Some(self.value) }
+}
+
+/// Repeats a value indefinitely. Use take to bound the sequence.
+pub fn repeat<T>(value: T) -> Repeat<T> { Repeat { value } }
+
+pub fn once<T>(value: T) -> Taken<Repeat<T>, T> { repeat(value).take(1) }

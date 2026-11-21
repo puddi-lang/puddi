@@ -1,0 +1,31 @@
+// std.text: Unicode scalar based operations on strings.
+
+pub fn strip_prefix(value: Str, prefix: Str) -> Option<Str> {
+    if !value.starts_with(prefix) { return None }
+    Some(__str_slice(value, prefix.utf8_len(), value.utf8_len()))
+}
+
+pub fn strip_suffix(value: Str, suffix: Str) -> Option<Str> {
+    if !value.ends_with(suffix) { return None }
+    Some(__str_slice(value, 0, value.utf8_len() - suffix.utf8_len()))
+}
+
+/// Returns up to n Unicode scalars from the start of value.
+pub fn truncate(value: Str, n: Int) -> Str {
+    match value.advance(value.start(), n) {
+        Some(end) -> value.slice_to(end)
+        None -> value
+    }
+}
+
+pub fn pad_start(value: Str, width: Int, fill: Char) -> Str {
+    if width <= 0 { return value }
+    let count = value.chars().count()
+    if width <= count { value } else { fill.to_str().repeat(width - count) + value }
+}
+
+pub fn pad_end(value: Str, width: Int, fill: Char) -> Str {
+    if width <= 0 { return value }
+    let count = value.chars().count()
+    if width <= count { value } else { value + fill.to_str().repeat(width - count) }
+}

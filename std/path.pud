@@ -1,0 +1,67 @@
+// std.path: lexical slash-separated paths, including WASI paths.
+
+pub fn is_absolute(value: Str) -> Bool { value.starts_with("/") }
+
+/// Collapses repeated separators and dot components without accessing the filesystem.
+pub fn normalize(value: Str) -> Str {
+    let absolute = is_absolute(value)
+    let parts: List<Str> = []
+    for part in value.split("/") {
+        if part == "" || part == "." { continue }
+        if part == ".." {
+            match parts.last() {
+                Some(last) if last != ".." -> {
+                    parts.pop()
+                    continue
+                }
+                _ -> ()
+            }
+            if absolute { continue }
+        }
+        parts.push(part)
+    }
+    let joined = parts.join("/")
+    if absolute { "/" + joined } else if joined.is_empty() { "." } else { joined }
+}
+
+/// Joins and normalizes two paths. An absolute right operand starts at the root.
+pub fn join(left: Str, right: Str) -> Str {
+    if left.is_empty() || is_absolute(right) { normalize(right) } else { normalize(left + "/" + right) }
+}
+
+/// Returns the final component of the normalized path.
+pub fn file_name(value: Str) -> Option<Str> {
+    let cleaned = normalize(value)
+    if cleaned == "/" || cleaned == "." || cleaned == ".." { return None }
+    let name = cleaned.split("/").last()?
+    if name == ".." { None } else { Some(name) }
+}
+
+pub fn parent(value: Str) -> Option<Str> {
+    let cleaned = normalize(value)
+    if cleaned == "/" || cleaned == "." { return None }
+    match cleaned.rfind("/") {
+        Some(separator) -> {
+            let prefix = cleaned.slice_to(separator)
+            Some(if prefix.is_empty() { "/" } else { prefix })
+        }
+        None -> Some(".")
+    }
+}
+
+/// Returns the part after the final dot. A leading dot alone does not mark an extension.
+pub fn extension(value: Str) -> Option<Str> {
+    let name = file_name(value)?
+    let dot = name.rfind(".")?
+    if dot == name.start() { return None }
+    let suffix = name.slice_from(name.next_index(dot)?)
+    if suffix.is_empty() { None } else { Some(suffix) }
+}
+
+pub fn stem(value: Str) -> Option<Str> {
+    let name = file_name(value)?
+    match name.rfind(".") {
+        Some(dot) if dot != name.start() && name.next_index(dot) != Some(name.end()) -> Some(name.slice_to(dot))
+        _ -> Some(name)
+    }
+}

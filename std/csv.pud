@@ -1,0 +1,96 @@
+// std.csv: parsing and writing comma-separated records.
+
+@derive(Eq)
+pub struct ParseErr {
+    pub offset: Int
+    pub reason: Str
+}
+
+impl Show for ParseErr {
+    fn show(self) -> Str { "invalid CSV at byte {self.offset}: {self.reason}" }
+}
+
+impl Error for ParseErr {}
+
+struct Parser {
+    input: Str
+    var pos: Int
+}
+
+impl Parser {
+    fn peek(self) -> Int {
+        if self.pos == self.input.utf8_len() { -1 } else { __str_byte(self.input, self.pos) }
+    }
+
+    fn quoted(self) -> Result<Str, ParseErr> {
+        let start = self.pos
+        self.pos += 1
+        let out = StrBuilder.new()
+        loop {
+            let byte = self.peek()
+            if byte == -1 { return Err(ParseErr { offset: start, reason: "unclosed quoted field" }) }
+            self.pos += 1
+            if byte == 34 {
+                if self.peek() != 34 { return Ok(out.to_str()) }
+                self.pos += 1
+            }
+            out.push_byte(byte)
+        }
+    }
+
+    fn field(self) -> Result<Str, ParseErr> {
+        if self.peek() == 34 { return self.quoted() }
+        let start = self.pos
+        loop {
+            match self.peek() {
+                -1 | 44 | 10 | 13 -> return Ok(__str_slice(self.input, start, self.pos))
+                34 -> return Err(ParseErr { offset: self.pos, reason: "quote in unquoted field" })
+                _ -> { self.pos += 1 }
+            }
+        }
+    }
+}
+
+/// Reads comma-separated rows. Accepts LF, CRLF and CR record endings.
+pub fn parse(input: Str) -> Result<List<List<Str>>, ParseErr> {
+    let parser = Parser { input, pos: 0 }
+    let rows: List<List<Str>> = []
+    while parser.peek() != -1 {
+        let row: List<Str> = []
+        loop {
+            row.push(parser.field()?)
+            match parser.peek() {
+                44 -> { parser.pos += 1 }
+                10 | 13 -> {
+                    let cr = parser.peek() == 13
+                    parser.pos += 1
+                    if cr && parser.peek() == 10 { parser.pos += 1 }
+                    break
+                }
+                -1 -> break
+                _ -> return Err(ParseErr { offset: parser.pos, reason: "expected a comma or record ending" })
+            }
+        }
+        rows.push(row)
+    }
+    Ok(rows)
+}
+
+/// Writes CSV with CRLF record endings. A zero-field row is written as one empty field.
+pub fn stringify(rows: List<List<Str>>) -> Str {
+    let out = StrBuilder.new()
+    for row in rows {
+        for (index, field) in row.enumerate() {
+            if index > 0 { out.push_byte(44) }
+            if field.contains(",") || field.contains("\"") || field.contains("\r") || field.contains("\n") {
+                out.push_byte(34)
+                out.push(field.replace("\"", "\"\""))
+                out.push_byte(34)
+            } else {
+                out.push(field)
+            }
+        }
+        out.push("\r\n")
+    }
+    out.to_str()
+}

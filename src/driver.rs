@@ -139,20 +139,6 @@ pub struct ComponentOpts {
     pub world: String,
 }
 
-pub const STD_MODULES: &[(&str, &str)] = &[
-    ("std.math", include_str!("../std/math.pud")),
-    ("std.log", include_str!("../std/log.pud")),
-    ("std.time", include_str!("../std/time.pud")),
-    ("std.random", include_str!("../std/random.pud")),
-    ("std.io", include_str!("../std/io.pud")),
-    ("std.fs", include_str!("../std/fs.pud")),
-    ("std.env", include_str!("../std/env.pud")),
-    ("std.json", include_str!("../std/json.pud")),
-    ("std.http", include_str!("../std/http.pud")),
-    ("std.worker", include_str!("../std/worker.pud")),
-    ("std.dom", include_str!("../std/dom.pud")),
-];
-
 pub struct UserFile {
     /// Module path, e.g. `main` or `net.http`; dependency modules carry their package prefix.
     pub module: String,
@@ -437,7 +423,7 @@ pub fn compile(sm: &mut SourceMap, files: Vec<UserFile>, root: &str, target: &st
     let prelude_text = format!("{platform_imports}{PRELUDE}\n{platform_text}\n// ---- generated numeric prelude ----\n{}", crate::numeric::generate());
     // (module path, package, is the prelude, file id)
     let mut jobs: Vec<(String, Pkg, u32)> = vec![("prelude".into(), Pkg::Prelude, sm.add("<prelude>".into(), prelude_text))];
-    for (path, text) in STD_MODULES {
+    for (path, text, _) in program::STD_MODULES {
         if program::std_available(path, target) == Some(true) {
             jobs.push((path.to_string(), Pkg::Std, sm.add(format!("<{path}>"), text.to_string())));
         }

@@ -1,0 +1,110 @@
+// spec: 10.2 10.3
+// host: node
+import std.bytes
+import std.collections
+import std.csv
+import std.encoding
+import std.fmt
+import std.iter
+import std.path
+import std.stats
+import std.text
+
+fn main() {
+    let rows = [["key", "value"], ["雪", "line 1\nline \"2\""], ["", ""]]
+    let encoded = encoding.base64_encode(csv.stringify(rows).to_bytes())
+    let document = Str.from_utf8(encoding.base64_decode(encoded).unwrap()).unwrap()
+    assert_eq(csv.parse(document).unwrap(), rows)
+    assert_eq(csv.parse("a,\r\n\r\nb,").unwrap(), [["a", ""], [""], ["b", ""]])
+    assert_eq(csv.parse("\"x\"tail").unwrap_err().offset, 3)
+    assert_eq(csv.parse("a\"b").unwrap_err().offset, 1)
+    assert_eq(csv.parse("\"").unwrap_err().offset, 0)
+
+    assert_eq(encoding.hex_encode(encoding.hex_decode("00fF9a").unwrap()), "00ff9a")
+    assert_eq(encoding.hex_decode("A").unwrap_err().offset, 0)
+    assert_eq(encoding.base64_encode("f".to_bytes()), "Zg==")
+    assert(encoding.base64_decode("Zh==").is_err())
+    assert(encoding.base64_decode("Zg").is_err())
+    assert(encoding.base64url_decode("Zg==").is_err())
+    let binary: List<U8> = [255, 239]
+    assert_eq(encoding.base64url_encode(binary), "_-8")
+    assert_eq(encoding.base64url_decode("_-8").unwrap(), binary)
+    assert_eq(encoding.percent_encode("雪 +".to_bytes()), "%E9%9B%AA%20%2B")
+    assert_eq(encoding.percent_decode("%E9%9B%AA+").unwrap(), "雪+".to_bytes())
+    assert(encoding.percent_decode("%1x").is_err())
+
+    let packet = bytes.pack_u32(0x89abcdef, bytes.Endian.Big)
+    packet.extend(bytes.pack_u64(0xfedcba9876543210, bytes.Endian.Little))
+    let reader = bytes.Reader.new(packet)
+    packet[0] = 0
+    assert_eq(reader.read_u32(bytes.Endian.Big).unwrap(), 0x89abcdef)
+    assert(reader.read(9).is_none())
+    assert(!reader.skip(-1))
+    assert_eq(reader.position(), 4)
+    assert_eq(reader.read_u64(bytes.Endian.Little).unwrap(), 0xfedcba9876543210)
+    assert(reader.read_u8().is_none())
+    assert_eq(reader.remaining(), 0)
+
+    let queue: collections.Deque<Int> = collections.Deque.new()
+    for i in 0..8 { queue.push_back(i) }
+    for i in 0..3 { assert_eq(queue.pop_front().unwrap(), i) }
+    for i in 8..13 { queue.push_back(i) }
+    queue.push_front(2)
+    assert_eq(queue.to_list(), (2..13).to_list())
+    assert_eq(queue.pop_back().unwrap(), 12)
+    queue.clear()
+    assert(queue.pop_front().is_none())
+
+    let heap: collections.PriorityQueue<Int> = collections.PriorityQueue.new()
+    for value in [6, 2, 2, 9, 1, 5] { heap.push(value) }
+    for value in [1, 2, 2, 5, 6, 9] { assert_eq(heap.pop().unwrap(), value) }
+    assert(heap.pop().is_none())
+    assert_eq(collections.count_by(["a", "b", "a"], |value| value)["a"], 2)
+    assert_eq(collections.group_by([1, 2, 3, 4], |value| value % 2)[1], [1, 3])
+
+    let squares = iter.unfold(0, |n| if n < 4 { Some((n * n, n + 1)) } else { None })
+    assert_eq(squares.collect(), [0, 1, 4, 9])
+    assert(squares.next().is_none())
+    assert_eq(iter.repeat("x").take(3).collect(), ["x", "x", "x"])
+    assert_eq(iter.once(7).collect(), [7])
+    let calls = [0]
+    let ended = iter.from_fn(|| -> Option<Int> {
+        calls[0] += 1
+        None
+    })
+    assert(ended.next().is_none())
+    assert(ended.next().is_none())
+    assert_eq(calls[0], 1)
+
+    assert_eq(fmt.join([1, 2, 3], "/"), "1/2/3")
+    assert_eq(fmt.int_radix(-9223372036854775808, 16).unwrap(), "-8000000000000000")
+    assert_eq(fmt.uint_radix(18446744073709551615, 16).unwrap(), "ffffffffffffffff")
+    assert(fmt.uint_radix(0, 37).is_none())
+    assert_eq(text.truncate("雪☃ab", 2), "雪☃")
+    assert_eq(text.pad_start("雪", 3, '☃'), "☃☃雪")
+    assert_eq(text.pad_end("雪", 2, '☃'), "雪☃")
+    assert_eq(text.strip_prefix("雪山", "雪").unwrap(), "山")
+    assert(text.strip_suffix("雪山", "雪").is_none())
+
+    assert_eq(path.normalize("//../雪/./foo/../bar/"), "/雪/bar")
+    assert_eq(path.normalize("a/../../b"), "../b")
+    assert_eq(path.join("/dir", "/file"), "/file")
+    assert_eq(path.parent("/file").unwrap(), "/")
+    assert(path.parent("/").is_none())
+    assert(path.extension(".env").is_none())
+    assert_eq(path.extension("pack.tar.gz").unwrap(), "gz")
+    assert_eq(path.stem("pack.tar.gz").unwrap(), "pack.tar")
+    assert_eq(path.stem("file.").unwrap(), "file.")
+
+    let samples = [1.0, 4.0, 2.0, 3.0]
+    let summary = stats.summarize(samples).unwrap()
+    assert_eq(summary.mean, 2.5)
+    assert_eq(summary.population_variance(), 1.25)
+    assert_eq(stats.median(samples).unwrap(), 2.5)
+    assert_eq(samples[1], 4.0)
+    assert(stats.summarize([1.0]).unwrap().sample_variance().is_none())
+    assert(stats.summarize([]).is_none())
+    assert(stats.median([0.0 / 0.0]).is_none())
+    print("portable standard library ok")
+}
+//> portable standard library ok

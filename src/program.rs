@@ -224,19 +224,38 @@ pub struct TyCx<'a> {
     pub self_ty: Option<Ty>,
 }
 
-const STD_AVAIL: &[(&str, &[&str])] = &[
-    ("std.math", &["browser", "wasi", "plugin"]),
-    ("std.log", &["browser", "wasi", "plugin"]),
-    ("std.time", &["browser", "wasi"]),
-    ("std.random", &["browser", "wasi"]),
-    ("std.io", &["wasi"]),
-    ("std.fs", &["wasi"]),
-    ("std.env", &["wasi"]),
-    ("std.json", &["browser", "wasi", "plugin"]),
-    ("std.http", &["browser", "wasi"]),
-    ("std.worker", &["browser", "wasi"]),
-    ("std.dom", &["browser"]),
-];
+const PORTABLE: &[&str] = &["browser", "wasi", "plugin"];
+
+macro_rules! std_modules {
+    ($($name:literal => $targets:expr),* $(,)?) => {
+        pub const STD_MODULES: &[(&str, &str, &[&str])] = &[
+            $((concat!("std.", $name), include_str!(concat!("../std/", $name, ".pud")), $targets)),*
+        ];
+    };
+}
+
+std_modules! {
+    "math" => PORTABLE,
+    "log" => PORTABLE,
+    "time" => &["browser", "wasi"],
+    "random" => &["browser", "wasi"],
+    "io" => &["wasi"],
+    "fs" => &["wasi"],
+    "env" => &["wasi"],
+    "json" => PORTABLE,
+    "http" => &["browser", "wasi"],
+    "worker" => &["browser", "wasi"],
+    "dom" => &["browser"],
+    "bytes" => PORTABLE,
+    "collections" => PORTABLE,
+    "csv" => PORTABLE,
+    "encoding" => PORTABLE,
+    "fmt" => PORTABLE,
+    "iter" => PORTABLE,
+    "path" => PORTABLE,
+    "stats" => PORTABLE,
+    "text" => PORTABLE,
+}
 
 thread_local! {
     /// Modules a plugin's world provides through its imports (SPEC 10.2 "host").
@@ -252,7 +271,7 @@ pub fn std_available(path: &str, target: &str) -> Option<bool> {
     if target == "plugin" && HOST_MODULES.with(|h| h.borrow().iter().any(|m| m == path)) {
         return Some(true);
     }
-    STD_AVAIL.iter().find(|(p, _)| *p == path).map(|(_, ts)| ts.contains(&target))
+    STD_MODULES.iter().find(|(p, _, _)| *p == path).map(|(_, _, ts)| ts.contains(&target))
 }
 
 impl Program {

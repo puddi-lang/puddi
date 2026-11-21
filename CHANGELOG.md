@@ -4,6 +4,10 @@ All notable changes to Puddi are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- Nine portable standard library modules for browser, WASI and plugins. They provide deques and priority queues, lazy iterator sources, Unicode text helpers, radix formatting, binary readers, hex and Base64 codecs, percent encoding, lexical paths, CSV and descriptive statistics.
+
 ## [0.1.1] - 2026-11-21
 
 This release improves the Puddi toolchain for the draft 0.1 language specification.

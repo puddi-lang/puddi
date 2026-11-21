@@ -1,0 +1,58 @@
+// std.stats: descriptive statistics for finite numeric samples.
+
+pub struct Summary {
+    pub count: Int
+    pub mean: Float
+    pub min: Float
+    pub max: Float
+    squared_deviations: Float
+}
+
+impl Summary {
+    pub fn population_variance(self) -> Float {
+        self.squared_deviations / self.count.round_to_float()
+    }
+
+    pub fn sample_variance(self) -> Option<Float> {
+        if self.count < 2 { None } else { Some(self.squared_deviations / (self.count - 1).round_to_float()) }
+    }
+
+    pub fn population_stddev(self) -> Float { self.population_variance().sqrt() }
+    pub fn sample_stddev(self) -> Option<Float> { Some(self.sample_variance()?.sqrt()) }
+}
+
+/// Computes a one-pass summary. Empty samples, non-finite values and overflow return None.
+pub fn summarize(values: List<Float>) -> Option<Summary> {
+    let first = values.first()?
+    if !first.is_finite() { return None }
+    var mean = first
+    var squared_deviations = 0.0
+    var lowest = first
+    var highest = first
+    for i in 1..values.len() {
+        let value = values[i]
+        if !value.is_finite() { return None }
+        let delta = value - mean
+        mean += delta / (i + 1).round_to_float()
+        squared_deviations += delta * (value - mean)
+        if !squared_deviations.is_finite() { return None }
+        lowest = lowest.min(value)
+        highest = highest.max(value)
+    }
+    Some(Summary { count: values.len(), mean, min: lowest, max: highest, squared_deviations })
+}
+
+/// Returns the middle value, or the mean of the two middle values for an even-sized sample.
+pub fn median(values: List<Float>) -> Option<Float> {
+    if values.is_empty() { return None }
+    for value in values {
+        if !value.is_finite() { return None }
+    }
+    let sorted = values.sorted()
+    let middle = sorted.len() / 2
+    if sorted.len() % 2 == 1 { return Some(sorted[middle]) }
+    let low = sorted[middle - 1]
+    let high = sorted[middle]
+    let span = high - low
+    Some(if span.is_finite() { low + span / 2.0 } else { low / 2.0 + high / 2.0 })
+}

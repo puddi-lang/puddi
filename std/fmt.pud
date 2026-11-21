@@ -1,0 +1,35 @@
+// std.fmt: formatting values and integers.
+
+pub fn join<T: Show>(values: List<T>, separator: Str) -> Str {
+    let out = StrBuilder.new()
+    for (index, value) in values.enumerate() {
+        if index > 0 { out.push(separator) }
+        out.push(value.show())
+    }
+    out.to_str()
+}
+
+/// Formats an unsigned integer with lowercase digits in a base from 2 to 36.
+pub fn uint_radix(value: U64, base: Int) -> Option<Str> {
+    if base < 2 || base > 36 { return None }
+    let radix = base.wrap_to_u64()
+    let digits: List<Char> = []
+    var rest = value
+    loop {
+        let digit = (rest % radix).wrap_to_u32()
+        let code = if digit < 10 { 48 + digit } else { 87 + digit }
+        digits.push(Char.from_u32(code).unwrap())
+        rest /= radix
+        if rest == 0 { break }
+    }
+    digits.reverse()
+    Some(Str.from_chars(digits))
+}
+
+/// Formats a signed integer with a leading minus sign for negative values.
+pub fn int_radix(value: I64, base: Int) -> Option<Str> {
+    if value >= 0 { return uint_radix(value.wrap_to_u64(), base) }
+    let magnitude = (-(value + 1)).wrap_to_u64() + 1
+    let digits = uint_radix(magnitude, base)?
+    Some("-" + digits)
+}

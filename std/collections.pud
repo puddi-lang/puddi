@@ -1,0 +1,145 @@
+// std.collections: collections that complement List, Map and Set.
+
+/// A double-ended queue backed by a growable ring buffer.
+pub struct Deque<T> {
+    var data: List<Option<T>>
+    var head: Int
+    var count: Int
+}
+
+impl<T> Deque<T> {
+    pub fn new() -> Deque<T> { Deque { data: List.filled(8, None), head: 0, count: 0 } }
+
+    pub fn len(self) -> Int { self.count }
+    pub fn is_empty(self) -> Bool { self.count == 0 }
+
+    fn index(self, offset: Int) -> Int {
+        let tail = self.data.len() - self.head
+        if offset < tail { self.head + offset } else { offset - tail }
+    }
+
+    fn ensure_space(self) {
+        let capacity = self.data.len()
+        if self.count < capacity { return }
+        let grown: List<Option<T>> = List.filled(capacity * 2, None)
+        for i in 0..self.count { grown[i] = self.data[self.index(i)] }
+        self.data = grown
+        self.head = 0
+    }
+
+    pub fn get(self, offset: Int) -> Option<T> {
+        if offset < 0 || offset >= self.count { None } else { self.data[self.index(offset)] }
+    }
+
+    pub fn front(self) -> Option<T> { self.get(0) }
+    pub fn back(self) -> Option<T> { self.get(self.count - 1) }
+
+    pub fn push_front(self, value: T) {
+        self.ensure_space()
+        self.head = if self.head == 0 { self.data.len() - 1 } else { self.head - 1 }
+        self.data[self.head] = Some(value)
+        self.count += 1
+    }
+
+    pub fn push_back(self, value: T) {
+        self.ensure_space()
+        self.data[self.index(self.count)] = Some(value)
+        self.count += 1
+    }
+
+    pub fn pop_front(self) -> Option<T> {
+        if self.is_empty() { return None }
+        let value = self.data[self.head]
+        self.data[self.head] = None
+        self.head = self.index(1)
+        self.count -= 1
+        value
+    }
+
+    pub fn pop_back(self) -> Option<T> {
+        if self.is_empty() { return None }
+        self.count -= 1
+        let index = self.index(self.count)
+        let value = self.data[index]
+        self.data[index] = None
+        value
+    }
+
+    pub fn clear(self) {
+        self.data = List.filled(8, None)
+        self.head = 0
+        self.count = 0
+    }
+
+    pub fn to_list(self) -> List<T> {
+        let values: List<T> = List.with_capacity(self.count)
+        for i in 0..self.count { values.push(self.data[self.index(i)].unwrap()) }
+        values
+    }
+}
+
+/// A binary min-heap. Values with equal priority may be returned in any order.
+pub struct PriorityQueue<T> {
+    data: List<T>
+}
+
+impl<T: Ord> PriorityQueue<T> {
+    pub fn new() -> PriorityQueue<T> { PriorityQueue { data: List.new() } }
+
+    pub fn len(self) -> Int { self.data.len() }
+    pub fn is_empty(self) -> Bool { self.data.is_empty() }
+    pub fn peek(self) -> Option<T> { self.data.first() }
+    pub fn clear(self) { self.data.clear() }
+
+    pub fn push(self, value: T) {
+        var index = self.data.len()
+        self.data.push(value)
+        while index > 0 {
+            let parent = (index - 1) / 2
+            if !(value < self.data[parent]) { break }
+            self.data.swap(index, parent)
+            index = parent
+        }
+    }
+
+    pub fn pop(self) -> Option<T> {
+        let value = self.data.first()?
+        let last = self.data.pop().unwrap()
+        let length = self.data.len()
+        if length == 0 { return Some(value) }
+
+        self.data[0] = last
+        var index = 0
+        while index < length / 2 {
+            let left = 2 * index + 1
+            let right = left + 1
+            let child = if right < length && self.data[right] < self.data[left] { right } else { left }
+            if !(self.data[child] < last) { break }
+            self.data.swap(index, child)
+            index = child
+        }
+        Some(value)
+    }
+}
+
+pub fn count_by<T, K: Eq + Hash>(values: List<T>, key: fn(T) -> K) -> Map<K, Int> {
+    let counts: Map<K, Int> = Map.new()
+    for value in values {
+        let k = key(value)
+        counts[k] = counts.get_or(k, 0) + 1
+    }
+    counts
+}
+
+/// Groups values by key, preserving input order within each group.
+pub fn group_by<T, K: Eq + Hash>(values: List<T>, key: fn(T) -> K) -> Map<K, List<T>> {
+    let groups: Map<K, List<T>> = Map.new()
+    for value in values {
+        let k = key(value)
+        match groups.get(k) {
+            Some(group) -> group.push(value)
+            None -> { groups[k] = [value] }
+        }
+    }
+    groups
+}

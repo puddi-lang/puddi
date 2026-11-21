@@ -761,7 +761,8 @@ A module that the build target does not provide is a compile error to import.
 
 | Module | browser | wasi | plugin |
 |---|---|---|---|
-| core (prelude, `iter`, `fmt`, `math`, collections) | yes | yes | yes |
+| core (prelude and built-in collections) | yes | yes | yes |
+| `std.bytes`, `std.collections`, `std.csv`, `std.encoding`, `std.fmt`, `std.iter`, `std.math`, `std.path`, `std.stats`, `std.text` | yes | yes | yes |
 | `std.json` | yes | yes | yes |
 | `std.log` | yes | yes | yes |
 | `std.time` | yes | yes | host |
@@ -774,6 +775,33 @@ A module that the build target does not provide is a compile error to import.
 | `std.dom` | yes | - | - |
 
 "host" means available only if the target world includes the corresponding interface. On `plugin`, `std.log` uses the host's logging interface if the world has one and does nothing otherwise.
+
+### 10.3 Portable modules
+
+Import portable modules by name, for example `import std.csv` to use `csv.parse`.
+
+| Module | API | Behavior |
+|---|---|---|
+| `std.bytes` | `Endian.Big`, `Endian.Little`, `pack_u16`, `pack_u32`, `pack_u64`, `Reader` | The reader snapshots the bytes at construction. It supports `read`, `read_u8`, typed reads with explicit byte order, `skip`, `position`, and `remaining`. Failed reads and skips preserve the position. |
+| `std.collections` | `Deque<T>`, `PriorityQueue<T>`, `count_by`, `group_by` | The deque supports amortized constant-time insertion and removal at either end. The priority queue pops the smallest value in logarithmic time. Grouping preserves input order within each group. |
+| `std.csv` | `parse`, `stringify` | Parses comma-separated rows with quoted fields, doubled quotes, and LF, CRLF, or CR endings. It accepts rows of varying lengths. Serialization uses CRLF and writes a zero-field row as one empty field. Parse errors carry a zero-based byte offset. |
+| `std.encoding` | `hex_encode`, `hex_decode`, `base64_encode`, `base64_decode`, `base64url_encode`, `base64url_decode`, `percent_encode`, `percent_decode` | Hex accepts either case and writes lowercase. Base64 uses canonical padding, and Base64url uses the URL-safe alphabet without padding. Percent encoding preserves ASCII letters, digits, `-`, `.`, `_`, and `~`. Percent decoding preserves literal plus signs. Decoders return bytes or an error with a zero-based byte offset. |
+| `std.fmt` | `join`, `int_radix`, `uint_radix` | Joins values using `Show`. Radix formatting supports bases 2 through 36, uses lowercase digits, and returns `None` for other bases. |
+| `std.iter` | `once`, `repeat`, `from_fn`, `unfold` | Creates lazy iterators from values, callbacks, or state transitions. `repeat` is infinite. Callback-based sources end at their first `None`. |
+| `std.path` | `is_absolute`, `normalize`, `join`, `parent`, `file_name`, `stem`, `extension` | Handles slash-separated paths lexically. A leading slash denotes the root, and an absolute right operand replaces the left operand in `join`. Normalizing an empty relative path gives `.`. |
+| `std.stats` | `summarize`, `median` | Summaries include count, mean, extrema, and population and sample variance and standard deviation. Empty samples and non-finite values return `None`. Summary overflow and sample variance with fewer than two observations also return `None`. |
+| `std.text` | `strip_prefix`, `strip_suffix`, `truncate`, `pad_start`, `pad_end` | Truncation lengths and padding widths count Unicode scalars. Prefix and suffix matching is exact. |
+
+```puddi
+import std.collections
+import std.csv
+
+fn main() {
+    let rows = csv.parse("fruit,red\nfruit,green\nvegetable,green").unwrap()
+    let colors = collections.count_by(rows, |row| row[1])
+    print(colors["green"])
+}
+```
 
 ## 11. Grammar Summary
 
