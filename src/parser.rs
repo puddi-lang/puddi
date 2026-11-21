@@ -888,10 +888,6 @@ impl Parser {
                 Tok::LBrace if !self.no_struct && Self::is_path_expr(&e) => {
                     let mut path = Vec::new();
                     Self::path_of(&e, &mut path);
-                    let last_upper = path.last().map(|i| type_like(&i.name)).unwrap_or(false);
-                    if !last_upper {
-                        break;
-                    }
                     let args = match &e.kind {
                         ExprKind::Name(_, a) | ExprKind::Field(_, _, a) => a.clone(),
                         _ => Vec::new(),
@@ -1345,7 +1341,7 @@ impl Parser {
                     }
                     return Ok(mk(PatKind::TupleStruct(path, pats), self));
                 }
-                if self.at(&Tok::LBrace) && path.last().map(|i| type_like(&i.name)).unwrap_or(false) {
+                if self.at(&Tok::LBrace) {
                     self.bump();
                     let mut fields = Vec::new();
                     let mut rest = false;
@@ -1390,9 +1386,4 @@ pub fn plain_string(parts: &[StrPart]) -> Option<String> {
         }
     }
     Some(s)
-}
-
-/// Type names start with an uppercase letter, after any leading underscores.
-pub fn type_like(name: &str) -> bool {
-    name.trim_start_matches('_').chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
 }

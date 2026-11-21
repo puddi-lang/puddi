@@ -87,6 +87,80 @@ pub enum Ty {
 
 pub const INT: Ty = Ty::Int(IntTy::I32);
 
+/// Tests whether two impl headers can denote the same types. The caller gives
+/// each header its own variable IDs, including across the trait arguments.
+pub fn unify_headers(mut pending: Vec<(Ty, Ty)>, variables: u32) -> Option<Vec<Ty>> {
+    use std::collections::HashMap;
+
+    fn resolve<'a>(mut ty: &'a Ty, bindings: &'a HashMap<u32, Ty>) -> &'a Ty {
+        while let Ty::Var(id) = ty {
+            let Some(bound) = bindings.get(id) else { break };
+            ty = bound;
+        }
+        ty
+    }
+
+    fn occurs(id: u32, ty: &Ty, bindings: &HashMap<u32, Ty>) -> bool {
+        match resolve(ty, bindings) {
+            Ty::Var(other) => id == *other,
+            Ty::Tuple(ts) | Ty::Adt(_, ts) => ts.iter().any(|ty| occurs(id, ty, bindings)),
+            Ty::Array(ty) | Ty::Proj(ty, _) => occurs(id, ty, bindings),
+            Ty::Fn(args, ret) => args.iter().any(|ty| occurs(id, ty, bindings)) || occurs(id, ret, bindings),
+            Ty::Dyn(_, args, assoc) => args.iter().chain(assoc.iter().map(|(_, ty)| ty)).any(|ty| occurs(id, ty, bindings)),
+            _ => false,
+        }
+    }
+
+    fn substitute(ty: &Ty, bindings: &HashMap<u32, Ty>) -> Ty {
+        match resolve(ty, bindings) {
+            Ty::Tuple(ts) => Ty::Tuple(ts.iter().map(|t| substitute(t, bindings)).collect()),
+            Ty::Adt(id, ts) => Ty::Adt(*id, ts.iter().map(|t| substitute(t, bindings)).collect()),
+            Ty::Array(t) => Ty::Array(Box::new(substitute(t, bindings))),
+            Ty::Fn(args, ret) => Ty::Fn(args.iter().map(|t| substitute(t, bindings)).collect(), Box::new(substitute(ret, bindings))),
+            Ty::Dyn(id, args, assoc) => Ty::Dyn(*id, args.iter().map(|t| substitute(t, bindings)).collect(),
+                assoc.iter().map(|(n, t)| (n.clone(), substitute(t, bindings))).collect()),
+            Ty::Proj(t, name) => Ty::Proj(Box::new(substitute(t, bindings)), name.clone()),
+            ty => ty.clone(),
+        }
+    }
+
+    let mut bindings = HashMap::new();
+    while let Some((left, right)) = pending.pop() {
+        let left = resolve(&left, &bindings);
+        let right = resolve(&right, &bindings);
+        if left == right {
+            continue;
+        }
+        match (left, right) {
+            (Ty::Error | Ty::Proj(..), _) | (_, Ty::Error | Ty::Proj(..)) => {}
+            (Ty::Var(id), ty) | (ty, Ty::Var(id)) => {
+                if occurs(*id, ty, &bindings) {
+                    return None;
+                }
+                bindings.insert(*id, ty.clone());
+            }
+            (Ty::Tuple(a), Ty::Tuple(b)) if a.len() == b.len() => {
+                pending.extend(a.iter().cloned().zip(b.iter().cloned()));
+            }
+            (Ty::Adt(i, a), Ty::Adt(j, b)) if i == j && a.len() == b.len() => {
+                pending.extend(a.iter().cloned().zip(b.iter().cloned()));
+            }
+            (Ty::Array(a), Ty::Array(b)) => pending.push(((**a).clone(), (**b).clone())),
+            (Ty::Fn(a, ar), Ty::Fn(b, br)) if a.len() == b.len() => {
+                pending.extend(a.iter().cloned().zip(b.iter().cloned()));
+                pending.push(((**ar).clone(), (**br).clone()));
+            }
+            (Ty::Dyn(i, a, aa), Ty::Dyn(j, b, ba)) if i == j && a.len() == b.len()
+                && aa.len() == ba.len() && aa.iter().zip(ba).all(|((an, _), (bn, _))| an == bn) => {
+                pending.extend(a.iter().cloned().zip(b.iter().cloned()));
+                pending.extend(aa.iter().zip(ba).map(|((_, a), (_, b))| (a.clone(), b.clone())));
+            }
+            _ => return None,
+        }
+    }
+    Some((0..variables).map(|i| substitute(&Ty::Var(i), &bindings)).collect())
+}
+
 impl Ty {
     pub fn is_numeric(&self) -> bool {
         matches!(self, Ty::Int(_) | Ty::Float(_))

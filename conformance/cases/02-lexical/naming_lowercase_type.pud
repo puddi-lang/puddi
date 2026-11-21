@@ -1,9 +1,15 @@
 // spec: 2.4 3.3
-// xfail: a struct literal is only parsed when the type name starts with an uppercase letter
+// match: contains
 // A lowercase type name violates the convention, which is a warning, not an error.
 struct point_2d { x: Int }
+enum Shape { circle(Int) }
+const SHAPE: Shape = Shape.circle(7)
 fn main() {
     let p = point_2d { x: 3 }
-    print(p.x)
+    let point_2d { x } = p
+    print(x)
+    print(match SHAPE { Shape.circle(radius) -> radius })
 }
 //> 3
+//> 7
+//~ name `point_2d` should use UpperCamelCase

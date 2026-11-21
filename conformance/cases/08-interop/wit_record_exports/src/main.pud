@@ -1,5 +1,4 @@
 // spec: 8.3 8.2
-// xfail: export glue does not qualify record, variant, enum and flags types that the world `use`s from an interface
 // mode: build
 // args: --target plugin
 import conf:mapping/types

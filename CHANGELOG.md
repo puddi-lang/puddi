@@ -14,6 +14,17 @@ All notable changes to Puddi are recorded here. The format follows [Keep a Chang
 - JSON parsing rejects malformed surrogate escape pairs.
 - Float literals can be used on either side of a binary operator with a fixed-width integer when a lossless common type exists.
 - Trait implementations resolve `Self.Item` and other associated types from the current impl in method signatures and local annotations.
+- Naming conventions produce warnings. Struct literals and patterns accept lowercase type names.
+- The compiler rejects overlapping trait implementation headers and cyclic supertraits.
+- Recursive constant initializers are diagnosed instead of overflowing the compiler stack.
+- Numeric operands can constrain unannotated closure parameters.
+- WIT exports can use records, variants, enums and flags aliased from an interface.
+- `pud fmt` preserves trailing spaces inside multiline strings. [#4](https://github.com/puddi-lang/puddi/issues/4)
+- `Str.from_utf8` rejects overlong encodings, surrogate code points and values above the Unicode range.
+
+### Documentation
+
+- The [bundled examples guide](examples/README.md) lists commands and expected results. [#2](https://github.com/puddi-lang/puddi/issues/2)
 
 ## [0.1.1] - 2026-11-21
 

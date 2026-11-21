@@ -1119,7 +1119,14 @@ fn __utf8_valid(s: Str) -> Bool {
     while i < n {
         let b = __str_byte(s, i)
         let w = if b < 0x80 { 1 } else if b >= 0xC2 && b < 0xE0 { 2 } else if b >= 0xE0 && b < 0xF0 { 3 } else if b >= 0xF0 && b < 0xF5 { 4 } else { 0 }
-        if w == 0 || i + w > n { return false }
+        if w == 0 || w > n - i { return false }
+        if w >= 3 {
+            let second = __str_byte(s, i + 1)
+            if (b == 0xE0 && second < 0xA0) || (b == 0xED && second >= 0xA0) ||
+                (b == 0xF0 && second < 0x90) || (b == 0xF4 && second >= 0x90) {
+                return false
+            }
+        }
         var k = 1
         while k < w {
             if (__str_byte(s, i + k) & 0xC0) != 0x80 { return false }

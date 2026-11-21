@@ -1,6 +1,5 @@
 // spec: 2.4
 // mode: check
-// xfail: the compiler does not warn on naming-convention violations yet
 // Naming convention violations are warnings, not errors.
 struct bad_type { x: Int }
 fn BadFunction() {}
@@ -9,4 +8,7 @@ fn main() {
     let BadLocal = 1
     BadFunction()
 }
-//~ warning
+//~ warning: name `bad_type` should use UpperCamelCase
+//~ warning: name `BadFunction` should use snake_case
+//~ warning: name `lower_const` should use SCREAMING_SNAKE_CASE
+//~ warning: name `BadLocal` should use snake_case

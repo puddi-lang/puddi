@@ -35,15 +35,11 @@ pub fn format(src: &str) -> String {
         if lead_close > 0 && out.ends_with("\n\n") {
             out.pop();
         }
-        if starts_inside {
-            out.push_str(line);
-        } else {
+        if !starts_inside {
             let extra = if (cont || trimmed.starts_with('.')) && lead_close == 0 { 1 } else { 0 };
             let ind = (depth - lead_close + extra).max(0) as usize;
             out.push_str(&"    ".repeat(ind));
-            out.push_str(trimmed);
         }
-        out.push('\n');
         if !starts_inside {
             let code = strip_line_comment(trimmed);
             cont = ["||", "&&", "+", "-", "*", "/", "%", "=", "->", "|", "&", "^"].iter().any(|op| code.ends_with(op)) && !code.ends_with("//");
@@ -106,6 +102,9 @@ pub fn format(src: &str) -> String {
             }
             i += 1;
         }
+        let content = if str_depth > 0 || in_block_comment > 0 { raw } else { line };
+        out.push_str(if starts_inside { content } else { content.trim_start() });
+        out.push('\n');
     }
     while out.ends_with("\n\n") {
         out.pop();
@@ -114,6 +113,15 @@ pub fn format(src: &str) -> String {
         out.push('\n');
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn format_preserves_multiline_string_spaces() {
+        let source = "fn main() {\n    let s = \"first  \nword  \nlast\"\n}\n";
+        assert_eq!(super::format(source), source);
+    }
 }
 
 /// Extract documentation for public items as Markdown.

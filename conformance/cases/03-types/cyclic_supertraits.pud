@@ -1,0 +1,6 @@
+// spec: 3.12
+// mode: reject
+trait First: Second {}
+trait Second: First {}
+fn main() {}
+//~ cyclic supertraits for `First`

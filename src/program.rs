@@ -8,6 +8,81 @@ use crate::diag::{Diag, Span};
 use crate::ir::TraitRef;
 use crate::types::*;
 
+#[derive(Clone, Copy)]
+pub enum Naming {
+    Snake,
+    Camel,
+    Constant,
+}
+
+impl Naming {
+    pub fn warning(self, id: &ast::Ident) -> Option<Diag> {
+        let name = id.name.trim_matches('_');
+        if name.is_empty() || name.starts_with('$') {
+            return None;
+        }
+        let (valid, style) = match self {
+            Self::Snake => (
+                name.chars().all(|c| c == '_' || c.is_alphanumeric() && !c.is_uppercase()),
+                "snake_case",
+            ),
+            Self::Camel => (
+                name.starts_with(char::is_uppercase) && !name.contains('_'),
+                "UpperCamelCase",
+            ),
+            Self::Constant => (!name.chars().any(char::is_lowercase), "SCREAMING_SNAKE_CASE"),
+        };
+        if valid {
+            return None;
+        }
+        let mut warning = Diag::new(id.span, format!("name `{}` should use {style}", id.name));
+        warning.warning = true;
+        Some(warning)
+    }
+}
+
+fn item_names(item: &ast::Item, warnings: &mut Vec<Diag>) {
+    use ast::{ItemKind::*, VariantKind};
+    use Naming::*;
+
+    fn function_names(f: &ast::FnDecl, warnings: &mut Vec<Diag>) {
+        warnings.extend(Snake.warning(&f.name));
+        warnings.extend(f.params.iter().filter_map(|p| Snake.warning(&p.name)));
+    }
+
+    match &item.kind {
+        Struct(item) => {
+            warnings.extend(Camel.warning(&item.name));
+            warnings.extend(item.fields.iter().filter_map(|f| Snake.warning(&f.name)));
+        }
+        Enum(item) => {
+            warnings.extend(Camel.warning(&item.name));
+            for variant in &item.variants {
+                warnings.extend(Camel.warning(&variant.name));
+                if let VariantKind::Record(fields) = &variant.kind {
+                    warnings.extend(fields.iter().filter_map(|f| Snake.warning(&f.name)));
+                }
+            }
+        }
+        Trait(item) => {
+            warnings.extend(Camel.warning(&item.name));
+            warnings.extend(item.assoc_types.iter().filter_map(|id| Camel.warning(id)));
+            for method in &item.methods {
+                function_names(method, warnings);
+            }
+        }
+        Impl(item) => {
+            for method in &item.methods {
+                function_names(method, warnings);
+            }
+        }
+        TypeAlias { name, .. } => warnings.extend(Camel.warning(name)),
+        Const { name, .. } => warnings.extend(Constant.warning(name)),
+        Fn(f) => function_names(f, warnings),
+        Test { .. } => {}
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pkg {
     Prelude,
@@ -572,6 +647,43 @@ impl Program {
         out
     }
 
+    fn impls_overlap(&self, left: &ImplDef, right: &ImplDef) -> bool {
+        let (Some(a), Some(b)) = (&left.trait_ref, &right.trait_ref) else { return false };
+        if a.trait_id != b.trait_id {
+            return false;
+        }
+        let split = left.generics.len() as u32;
+        let end = split + right.generics.len() as u32;
+        let left_args: Vec<_> = (0..split).map(Ty::Var).collect();
+        let right_args: Vec<_> = (split..end).map(Ty::Var).collect();
+        let header = std::iter::once((&left.self_ty, &right.self_ty)).chain(a.args.iter().zip(&b.args));
+        let pairs = header.map(|(x, y)| (x.subst(&left_args), y.subst(&right_args))).collect();
+        let Some(bindings) = unify_headers(pairs, end) else { return false };
+        let (left_args, right_args) = bindings.split_at(split as usize);
+        self.impl_bounds_may_hold(left, left_args) && self.impl_bounds_may_hold(right, right_args)
+    }
+
+    fn impl_bounds_may_hold(&self, imp: &ImplDef, args: &[Ty]) -> bool {
+        imp.generics.iter().zip(args).all(|(g, ty)| {
+            let ty = self.normalize_proj(ty.clone());
+            g.bounds.iter().all(|bound| {
+                let tr = TraitRef {
+                    trait_id: bound.trait_id,
+                    args: bound.args.iter().map(|t| self.normalize_proj(t.subst(args))).collect(),
+                };
+                if matches!(ty, Ty::Var(_) | Ty::Proj(..)) {
+                    true
+                } else if ty.has_vars() || tr.args.iter().any(Ty::has_vars) {
+                    self.candidate_impls(&ty).iter().any(|id| {
+                        self.impls[*id].trait_ref.as_ref().is_some_and(|candidate| candidate.trait_id == tr.trait_id)
+                    })
+                } else {
+                    self.implements(&ty, &tr, 0)
+                }
+            })
+        })
+    }
+
     /// Find an impl of `tr` for `t`. Returns impl id and impl generic bindings.
     pub fn find_trait_impl(&self, t: &Ty, trait_id: TraitId, targs: Option<&[Ty]>, depth: u32) -> Option<(ImplId, Vec<Ty>)> {
         if depth > 16 {
@@ -622,10 +734,7 @@ impl Program {
     }
 
     pub fn trait_has_super(&self, tid: TraitId, target: TraitId) -> bool {
-        if tid == target {
-            return true;
-        }
-        self.traits[tid].supertraits.iter().any(|s| self.trait_has_super(s.trait_id, target))
+        self.trait_closure(tid).contains(&target)
     }
 
     /// All traits in the supertrait closure (including tid), in order.
@@ -823,9 +932,22 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
     let mut adt_items: Vec<(AdtId, ast::Item)> = Vec::new();
     let mut trait_items: Vec<(TraitId, ast::Item)> = Vec::new();
     for (mid, s) in sources.iter().enumerate() {
+        if s.pkg.is_source() {
+            if let Some(item) = s.ast.items.first() {
+                let path = s.path.strip_prefix(&format!("{}.", s.prefix)).unwrap_or(&s.path);
+                for name in path.split('.') {
+                    p.warnings.extend(Naming::Snake.warning(&ast::Ident {
+                        name: name.into(), span: Span::new(item.span.file, 0, 0),
+                    }));
+                }
+            }
+        }
         for item in &s.ast.items {
             if !target_matches(&item.attrs, target) {
                 continue;
+            }
+            if s.pkg.is_source() {
+                item_names(item, &mut p.warnings);
             }
             let is_pub = item.vis != ast::Vis::Private;
             let register = |p: &mut Program, name: &ast::Ident, def: Def, errs: &mut Vec<Diag>| {
@@ -1138,6 +1260,12 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
         p.traits[*tid].generics = gdefs;
         p.traits[*tid].supertraits = sups;
     }
+    for (tid, _) in &trait_items {
+        let td = &p.traits[*tid];
+        if td.supertraits.iter().any(|sup| p.trait_has_super(sup.trait_id, *tid)) {
+            errs.push(Diag::new(td.span, format!("cyclic supertraits for `{}`", td.name)));
+        }
+    }
     for (tid, item) in &trait_items {
         let ast::ItemKind::Trait(td) = &item.kind else { unreachable!() };
         let mut outer = vec![GenericDef { name: "Self".into(), bounds: vec![TraitRef { trait_id: *tid, args: (1..=td.generics.len() as u32).map(Ty::Param).collect() }] }];
@@ -1272,6 +1400,16 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
         let Some(tr) = p.impls[iid].trait_ref.clone() else { continue };
         let td = &p.traits[tr.trait_id];
         let imp = &p.impls[iid];
+        let candidates = if matches!(head_of(&imp.self_ty), None | Some(Head::Any)) {
+            (0..iid).collect()
+        } else {
+            p.candidate_impls(&imp.self_ty)
+        };
+        if candidates.into_iter().any(|other| other < iid && p.impls_overlap(imp, &p.impls[other])) {
+            let names: Vec<_> = imp.generics.iter().map(|g| g.name.clone()).collect();
+            errs.push(Diag::new(imp.span, format!("overlapping implementations of `{}` for `{}`",
+                p.trait_ref_str(&tr), p.ty_str_p(&imp.self_ty, &names))));
+        }
         for a in &td.assoc {
             if !imp.assoc.contains_key(a) {
                 errs.push(Diag::new(imp.span, format!("missing associated type `{a}` in impl of `{}`", td.name)));

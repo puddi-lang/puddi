@@ -1,11 +1,13 @@
 // spec: 4.6 3.1
-// xfail: an unannotated closure parameter is not inferred from the closure body or later calls
 // The examples from SPEC 4.6: closure parameter types are inferred locally.
 fn main() {
     let inc = |x| x + 1
     print(inc(1))
+    let add_typed = |x| 1 + x
+    print(add_typed(2))
     let names = ["b", "a"].map(|s| s + "!")
     print(names)
 }
 //> 2
+//> 3
 //> ["b!", "a!"]

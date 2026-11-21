@@ -1,10 +1,18 @@
 // spec: 3.12
 // mode: reject
-// xfail: a second impl of the same trait for the same type is accepted
 // At most one impl may apply to a given type.
 trait Speak { fn speak(self) -> Str }
 struct Cat {}
 impl Speak for Cat { fn speak(self) -> Str { "meow" } }
 impl Speak for Cat { fn speak(self) -> Str { "purr" } }
+
+trait Tag<T> {}
+struct Pair<A, B> { a: A, b: B }
+impl<T> Tag<Int> for Pair<T, Str> {}
+impl<T> Tag<Str> for Pair<Bool, T> {}
+impl<T> Tag<Int> for Pair<Bool, T> {}
+
 fn main() {}
-//~ error
+//~ overlapping implementations of `Speak` for `Cat`
+//~ overlapping implementations of `Tag<Int>` for `Pair<Bool, T>`
+//!~ overlapping implementations of `Tag<Str>`

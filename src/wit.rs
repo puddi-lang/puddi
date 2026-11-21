@@ -353,7 +353,10 @@ impl<'a> Gen<'a> {
             Type::ErrorContext => "I32".into(),
             Type::Id(id) => {
                 let td = &self.r().types[*id];
-                if td.name.is_some() && !matches!(td.kind, TypeDefKind::Handle(_)) {
+                // A world-level `use` is an alias. Only interface bindings
+                // declare named Puddi types, so follow the alias to its owner.
+                if td.name.is_some() && !matches!(td.owner, TypeOwner::World(_))
+                    && !matches!(td.kind, TypeDefKind::Handle(_)) {
                     return self.named(*id);
                 }
                 self.ty_structural(*id)

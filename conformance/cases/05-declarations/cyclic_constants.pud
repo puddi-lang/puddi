@@ -1,0 +1,6 @@
+// spec: 5.3
+// mode: reject
+const FIRST: Int = SECOND
+const SECOND: Int = FIRST
+fn main() { print(FIRST) }
+//~ cyclic constant initializer
