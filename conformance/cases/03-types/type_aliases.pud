@@ -3,8 +3,20 @@ type UserId = Int
 type Callback<T> = fn(T) -> ()
 type Table = Map<Str, List<Int>>
 
+type Forward<T> = Next<T>
+type Next<T> = Third<T>
+type Third<T> = Fourth<T>
+type Fourth<T> = Fifth<T>
+type Fifth<T> = Last<T>
+type Last<T> = Wrapper<T>
+
+struct Wrapper<T> { value: T }
+struct Bounded<T: Marker<UserId>> { value: T }
+trait Marker<T> {}
+
 fn next_id(id: UserId) -> Int { id + 1 }      // same type as Int
 fn run(cb: Callback<Str>) { cb("called") }
+fn unwrap(value: Forward<Str>) -> Str { value.value }
 
 fn main() {
     let id: UserId = 41
@@ -13,7 +25,9 @@ fn main() {
     run(|s| print(s))
     let t: Table = ["a": [1, 2]]
     print(t)
+    print(unwrap(Wrapper { value: "forward" }))
 }
 //> 42
 //> called
 //> ["a": [1, 2]]
+//> forward

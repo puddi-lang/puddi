@@ -623,6 +623,9 @@ impl<'g, 'p> Elab<'g, 'p> {
     }
 
     fn lookup_local(&mut self, name: &str) -> Option<LocalId> {
+        if !self.const_stack.is_empty() {
+            return None;
+        }
         let n = self.cxs.len();
         for depth in (0..n).rev() {
             let found = self.cxs[depth].scopes.iter().rev().find_map(|s| s.iter().rev().find(|(nm, _)| nm == name).map(|(_, id)| *id));
@@ -1096,7 +1099,8 @@ impl<'g, 'p> Elab<'g, 'p> {
     }
 
     fn lookup_local_peek(&self, name: &str) -> bool {
-        self.cxs.iter().any(|cx| cx.scopes.iter().any(|s| s.iter().any(|(n, _)| n == name)))
+        self.const_stack.is_empty()
+            && self.cxs.iter().any(|cx| cx.scopes.iter().any(|s| s.iter().any(|(n, _)| n == name)))
     }
 
     fn def_res(&mut self, def: Def, targs: &[ast::TypeExpr], id: &ast::Ident) -> PathRes {
@@ -1179,30 +1183,26 @@ impl<'g, 'p> Elab<'g, 'p> {
             self.err(span, "cyclic constant initializer");
             return mk(ExprKind::Unreachable, Ty::Error, span);
         }
-        self.const_stack.push(cid);
-        let saved_mod = self.module;
-        self.module = c.module;
-        let value = c.value.clone();
-        if !is_const_expr(self.prog, self.module, &value) {
+        if !is_const_expr(self.prog, c.module, &c.value) {
             self.err(c.value.span, "constant initializers must be constant expressions (literals, other constants, operators and constructors)");
+            return mk(ExprKind::Unreachable, Ty::Error, span);
         }
-        let cx = TyCx { module: c.module, generics: &[], self_ty: None, self_impl: None };
-        let decl_ty = self.prog_const_ty(cid, &cx);
+
+        self.const_stack.push(cid);
+        let saved_mod = std::mem::replace(&mut self.module, c.module);
+        let saved_self_ty = self.self_ty.take();
+        let saved_self_impl = self.self_impl.take();
         let saved_targs = std::mem::take(&mut self.targs);
         let saved_gen = std::mem::take(&mut self.gen_names);
-        let mut e = self.expr_coerce(&value, &decl_ty);
+        let mut e = self.expr_coerce(&c.value, &c.ty);
         self.targs = saved_targs;
         self.gen_names = saved_gen;
+        self.self_ty = saved_self_ty;
+        self.self_impl = saved_self_impl;
         self.module = saved_mod;
         self.const_stack.pop();
         e.span = span;
         e
-    }
-
-    fn prog_const_ty(&mut self, cid: usize, cx: &TyCx) -> Ty {
-        // const types are resolved lazily from the AST type expression stored in the item
-        let _ = cx;
-        self.prog.consts[cid].ty.clone()
     }
 
     fn variant_value(&mut self, aid: AdtId, adt_args: Option<Vec<Ty>>, vi: usize, span: Span, expect: Option<&Ty>) -> Expr {
@@ -3327,19 +3327,23 @@ pub fn replace_proj_dyn(t: &Ty, assoc: &[(String, Ty)]) -> Ty {
 fn is_const_expr(prog: &Program, module: ModId, e: &ast::Expr) -> bool {
     let check = |e: &ast::Expr| is_const_expr(prog, module, e);
     match &e.kind {
-        ast::ExprKind::Int(_) | ast::ExprKind::Float(_) | ast::ExprKind::Bool(_) | ast::ExprKind::Char(_) | ast::ExprKind::Unit | ast::ExprKind::Name(..) => true,
+        ast::ExprKind::Int(_) | ast::ExprKind::Float(_) | ast::ExprKind::Bool(_) | ast::ExprKind::Char(_) | ast::ExprKind::Unit => true,
+        ast::ExprKind::Name(id, _) => matches!(prog.lookup(module, &id.name), None | Some(Def::Const(_) | Def::Variant(..))),
         ast::ExprKind::Str(ps) => ps.iter().all(|p| matches!(p, ast::StrPiece::Lit(_))),
-        ast::ExprKind::Field(b, _, _) => check(b),
+        ast::ExprKind::Field(b, _, _) => match const_path(prog, module, e) {
+            Some(def) => matches!(def, Def::Const(_) | Def::Variant(..)),
+            None => check(b),
+        },
         ast::ExprKind::Unary(_, x) => check(x),
         ast::ExprKind::Binary(_, a, b) => check(a) && check(b),
         ast::ExprKind::Tuple(xs) | ast::ExprKind::List(xs) => xs.iter().all(check),
         ast::ExprKind::Struct { fields, base, .. } => base.is_none() && fields.iter().all(|(_, v)| v.as_ref().is_none_or(check)),
-        ast::ExprKind::Call(f, args) => args.iter().all(check) && const_constructor(prog, module, f),
+        ast::ExprKind::Call(f, args) => args.iter().all(check) && matches!(const_path(prog, module, f), Some(Def::Variant(..))),
         _ => false,
     }
 }
 
-fn const_constructor(prog: &Program, module: ModId, f: &ast::Expr) -> bool {
+fn const_path(prog: &Program, module: ModId, f: &ast::Expr) -> Option<Def> {
     let mut path = Vec::new();
     let mut current = f;
     loop {
@@ -3352,16 +3356,18 @@ fn const_constructor(prog: &Program, module: ModId, f: &ast::Expr) -> bool {
                 path.push(id.clone());
                 break;
             }
-            _ => return false,
+            _ => return None,
         }
     }
     path.reverse();
-    if matches!(prog.resolve_path_def(module, &path), Ok(Def::Variant(..))) {
-        return true;
+    if let Ok(def) = prog.resolve_path_def(module, &path) {
+        return Some(def);
     }
-    let Some((variant, base)) = path.split_last() else { return false };
-    if base.is_empty() { return false }
-    let Ok(Def::Alias(alias)) = prog.resolve_path_def(module, base) else { return false };
-    let Some(Ty::Adt(id, _)) = &prog.aliases[alias].resolved else { return false };
-    matches!(&prog.adts[*id].kind, AdtKind::Enum(variants) if variants.iter().any(|v| v.name == variant.name))
+    let (variant, base) = path.split_last()?;
+    if base.is_empty() { return None }
+    let Ok(Def::Alias(alias)) = prog.resolve_path_def(module, base) else { return None };
+    let Some(Ty::Adt(id, _)) = &prog.aliases[alias].resolved else { return None };
+    let AdtKind::Enum(variants) = &prog.adts[*id].kind else { return None };
+    let index = variants.iter().position(|v| v.name == variant.name)?;
+    Some(Def::Variant(*id, index))
 }

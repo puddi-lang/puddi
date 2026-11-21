@@ -1,6 +1,6 @@
 //! Item collection, name resolution and signature resolution.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 use crate::ast::{self, TypeArg, TypeExpr};
@@ -124,6 +124,10 @@ pub struct ModuleInfo {
 pub struct GenericDef {
     pub name: String,
     pub bounds: Vec<TraitRef>,
+}
+
+fn generic_names(params: &[ast::GenericParam]) -> Vec<GenericDef> {
+    params.iter().map(|p| GenericDef { name: p.name.name.clone(), bounds: Vec::new() }).collect()
 }
 
 #[derive(Clone, Debug)]
@@ -578,8 +582,10 @@ impl Program {
                 if targs.len() != a.generics.len() {
                     return Err(Diag::new(span, format!("type alias `{}` expects {} type argument(s), found {}", a.name, a.generics.len(), targs.len())));
                 }
-                let base = a.resolved.clone().unwrap_or(Ty::Error);
-                Ok(base.subst(&targs))
+                match &a.resolved {
+                    Some(base) => Ok(base.subst(&targs)),
+                    None => Err(Diag::new(span, format!("type alias `{}` has not been resolved", a.name))),
+                }
             }
             Def::Trait(_) => Err(Diag::new(span, format!("`{}` is a trait; use `dyn {}` for a trait object type", name.name, name.name))),
             _ => Err(Diag::new(span, format!("`{}` is not a type", name.name))),
@@ -605,6 +611,80 @@ impl Program {
             return Err(Diag::new(*span, format!("trait `{}` expects {} type argument(s), found {}", self.traits[tid].name, self.traits[tid].generics.len(), targs.len())));
         }
         Ok(TraitRef { trait_id: tid, args: targs })
+    }
+
+    fn resolve_aliases(&mut self, errors: &mut Vec<Diag>) {
+        let mut remaining = vec![0; self.aliases.len()];
+        let mut dependents = vec![Vec::new(); self.aliases.len()];
+        for (id, alias) in self.aliases.iter().enumerate() {
+            let mut dependencies = Vec::new();
+            self.alias_dependencies(alias, &alias.ty, &mut dependencies);
+            dependencies.sort_unstable();
+            dependencies.dedup();
+            remaining[id] = dependencies.len();
+            for dependency in dependencies {
+                dependents[dependency].push(id);
+            }
+        }
+        let mut ready: VecDeque<_> = (0..self.aliases.len()).filter(|&id| remaining[id] == 0).collect();
+        while let Some(id) = ready.pop_front() {
+            let a = &self.aliases[id];
+            let cx = TyCx { module: a.module, generics: &a.generics, self_ty: None, self_impl: None };
+            let resolved = self.resolve_ty(&cx, &a.ty).unwrap_or_else(|e| {
+                errors.push(e);
+                Ty::Error
+            });
+            self.aliases[id].resolved = Some(resolved);
+            for &dependent in &dependents[id] {
+                remaining[dependent] -= 1;
+                if remaining[dependent] == 0 {
+                    ready.push_back(dependent);
+                }
+            }
+        }
+        for alias in &mut self.aliases {
+            if alias.resolved.is_none() {
+                errors.push(Diag::new(alias.ty.span(), format!("type alias `{}` has a cyclic dependency", alias.name)));
+                alias.resolved = Some(Ty::Error);
+            }
+        }
+    }
+
+    fn alias_dependencies(&self, alias: &AliasDef, ty: &TypeExpr, out: &mut Vec<usize>) {
+        let args = match ty {
+            TypeExpr::Path { segs, args, .. } => {
+                let head = &segs[0].name;
+                let generic = segs.len() <= 2 && alias.generics.contains(head);
+                if !generic && head != "Self" {
+                    if let Ok(Def::Alias(id)) = self.resolve_path_def(alias.module, segs) {
+                        out.push(id);
+                    }
+                }
+                args
+            }
+            TypeExpr::Dyn { args, .. } => args,
+            TypeExpr::Tuple(items, _) => {
+                for item in items {
+                    self.alias_dependencies(alias, item, out);
+                }
+                return;
+            }
+            TypeExpr::Fn { params, ret, .. } => {
+                for param in params {
+                    self.alias_dependencies(alias, param, out);
+                }
+                if let Some(ret) = ret {
+                    self.alias_dependencies(alias, ret, out);
+                }
+                return;
+            }
+            TypeExpr::SelfTy(_) => return,
+        };
+        for arg in args {
+            match arg {
+                TypeArg::Type(ty) | TypeArg::Assoc(_, ty) => self.alias_dependencies(alias, ty, out),
+            }
+        }
     }
 
     // ---------- impl matching ----------
@@ -963,13 +1043,13 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
             match &item.kind {
                 ast::ItemKind::Struct(sd) => {
                     let id = p.adts.len();
-                    p.adts.push(AdtDef { name: sd.name.name.clone(), module: mid, generics: Vec::new(), kind: AdtKind::Struct(Vec::new()), span: sd.name.span, pkg: s.pkg });
+                    p.adts.push(AdtDef { name: sd.name.name.clone(), module: mid, generics: generic_names(&sd.generics), kind: AdtKind::Struct(Vec::new()), span: sd.name.span, pkg: s.pkg });
                     register(&mut p, &sd.name, Def::Adt(id), &mut errs);
                     adt_items.push((id, item.clone()));
                 }
                 ast::ItemKind::Enum(ed) => {
                     let id = p.adts.len();
-                    p.adts.push(AdtDef { name: ed.name.name.clone(), module: mid, generics: Vec::new(), kind: AdtKind::Enum(Vec::new()), span: ed.name.span, pkg: s.pkg });
+                    p.adts.push(AdtDef { name: ed.name.name.clone(), module: mid, generics: generic_names(&ed.generics), kind: AdtKind::Enum(Vec::new()), span: ed.name.span, pkg: s.pkg });
                     register(&mut p, &ed.name, Def::Adt(id), &mut errs);
                     adt_items.push((id, item.clone()));
                 }
@@ -978,7 +1058,7 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
                     p.traits.push(TraitDef {
                         name: td.name.name.clone(),
                         module: mid,
-                        generics: Vec::new(),
+                        generics: generic_names(&td.generics),
                         supertraits: Vec::new(),
                         assoc: td.assoc_types.iter().map(|a| a.name.clone()).collect(),
                         methods: Vec::new(),
@@ -1127,7 +1207,10 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
         }
     }
 
-    // 5. ADTs: generics names first (bounds need traits; traits are registered)
+    // 4. Aliases only need declaration names and generic arity.
+    p.resolve_aliases(&mut errs);
+
+    // 5. Resolve ADT bounds and fields.
     for (id, item) in &adt_items {
         let gens = match &item.kind {
             ast::ItemKind::Struct(sd) => &sd.generics,
@@ -1149,29 +1232,6 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
         }
         p.adts[*id].generics = gdefs;
     }
-    // 4. aliases (resolve in order; aliases referring to later aliases resolve iteratively)
-    for _round in 0..4 {
-        for i in 0..p.aliases.len() {
-            if p.aliases[i].resolved.is_some() {
-                continue;
-            }
-            let gens = p.aliases[i].generics.clone();
-            let cx = TyCx { module: p.aliases[i].module, generics: &gens, self_ty: None, self_impl: None };
-            if let Ok(t) = p.resolve_ty(&cx, &p.aliases[i].ty.clone()) {
-                p.aliases[i].resolved = Some(t);
-            }
-        }
-    }
-    for i in 0..p.aliases.len() {
-        if p.aliases[i].resolved.is_none() {
-            let gens = p.aliases[i].generics.clone();
-            let cx = TyCx { module: p.aliases[i].module, generics: &gens, self_ty: None, self_impl: None };
-            if let Err(e) = p.resolve_ty(&cx, &p.aliases[i].ty.clone()) {
-                errs.push(e);
-            }
-        }
-    }
-
     for (id, item) in &adt_items {
         let names: Vec<String> = p.adts[*id].generics.iter().map(|g| g.name.clone()).collect();
         let self_ty = Ty::Adt(*id, (0..names.len() as u32).map(Ty::Param).collect());

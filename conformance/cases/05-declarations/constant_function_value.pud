@@ -1,0 +1,7 @@
+// spec: 5.3
+// mode: reject
+fn compute() -> Int { 3 }
+const COMPUTE: fn() -> Int = compute
+
+fn main() { print(COMPUTE()) }
+//~ constant initializers must be constant expressions

@@ -1,0 +1,11 @@
+// spec: 5.3
+const BASE: Int = 41
+const ANSWER: Int = BASE + 1
+
+fn read(BASE: Str) -> Int { ANSWER }
+
+fn main() {
+    assert_eq(read("caller"), 42)
+    let read_later = |BASE: Str| ANSWER
+    assert_eq(read_later("closure"), 42)
+}

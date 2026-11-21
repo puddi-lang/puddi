@@ -316,7 +316,7 @@ type UserId = Int
 type Callback<T> = fn(T) -> ()
 ```
 
-An alias is the same type as its target, not a new type.
+An alias is another name for its target type. Aliases can refer to later declarations and must expand without cycles.
 
 ## 4. Expressions and Statements
 
@@ -483,7 +483,7 @@ const MAX_USERS: Int = 1_000
 const GREETING: Str = "hi"
 ```
 
-A constant's initializer must be a constant expression: literals, other constants, arithmetic and comparison on them, and struct, tuple and enum construction from constant expressions.
+A constant's initializer must be a constant expression: literals, other constants, arithmetic and comparison on them, and struct, tuple and enum construction from constant expressions. Names in an initializer resolve in the module that declares the constant.
 
 ### 5.4 Visibility
 

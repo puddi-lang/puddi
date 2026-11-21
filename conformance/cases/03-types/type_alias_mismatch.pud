@@ -1,0 +1,10 @@
+// spec: 3.15
+// mode: reject
+type UserId = Number
+type Number = Int
+
+fn main() {
+    let user: UserId = "alice"
+    print(user)
+}
+//~ mismatched types
