@@ -8,4 +8,4 @@ fn main() {
     print(CamelLocal + answer)
 }
 //> 45
-//!~ error
+//!~ error:
