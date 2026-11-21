@@ -4,6 +4,8 @@ All notable changes to Puddi are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-21
+
 ### Added
 
 - Nine portable standard library modules for browser, WASI and plugins. They provide deques and priority queues, lazy iterator sources, Unicode text helpers, radix formatting, binary readers, hex and Base64 codecs, percent encoding, lexical paths, CSV and descriptive statistics.
@@ -17,6 +19,8 @@ All notable changes to Puddi are recorded here. The format follows [Keep a Chang
 - Naming conventions produce warnings. Struct literals and patterns accept lowercase type names.
 - The compiler rejects overlapping trait implementation headers and cyclic supertraits.
 - Recursive constant initializers are diagnosed instead of overflowing the compiler stack.
+- Type aliases resolve in dependency order, preserve their target types in generic bounds, and report cycles.
+- Constant initializers resolve names in their declaring module and reject references to ordinary functions.
 - Numeric operands can constrain unannotated closure parameters.
 - WIT exports can use records, variants, enums and flags aliased from an interface.
 - `pud fmt` preserves trailing spaces inside multiline strings. [#4](https://github.com/puddi-lang/puddi/issues/4)
@@ -102,5 +106,6 @@ The conformance suite marks these differences from the spec as expected failures
 - unannotated closure parameters are not inferred from the body or later calls (4.6)
 - plugin exports that use WIT records, variants, enums or flags fail to compile (8.3)
 
+[0.1.2]: https://github.com/puddi-lang/puddi/releases/tag/v0.1.2
 [0.1.1]: https://github.com/puddi-lang/puddi/releases/tag/v0.1.1
 [0.1.0]: https://github.com/puddi-lang/puddi/releases/tag/v0.1.0

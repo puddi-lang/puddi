@@ -36,12 +36,12 @@ Windows (PowerShell):
 irm https://raw.githubusercontent.com/puddi-lang/puddi/main/install.ps1 | iex
 ```
 
-The scripts download the latest [release](https://github.com/puddi-lang/puddi/releases), verify its SHA-256 checksum, put `pud` in `~/.pud/bin` and add that directory to `PATH`. Set `PUD_VERSION=v0.1.1` to pin a release, `PUD_INSTALL` to change the directory, or `PUD_NO_MODIFY_PATH=1` to leave `PATH` alone. Run the script again to upgrade.
+The scripts download the latest [release](https://github.com/puddi-lang/puddi/releases), verify its SHA-256 checksum, put `pud` in `~/.pud/bin` and add that directory to `PATH`. Set `PUD_VERSION=v0.1.2` to pin a release, `PUD_INSTALL` to change the directory, or `PUD_NO_MODIFY_PATH=1` to leave `PATH` alone. Run the script again to upgrade.
 
 From source (current stable Rust):
 
 ```sh
-cargo install --locked --git https://github.com/puddi-lang/puddi --tag v0.1.1
+cargo install --locked --git https://github.com/puddi-lang/puddi --tag v0.1.2
 ```
 
 `pud test` and the browser target also need Node.js 22 or newer.
