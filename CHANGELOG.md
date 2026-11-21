@@ -4,9 +4,13 @@ All notable changes to Puddi are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-21
+
+This release improves the Puddi toolchain for the draft 0.1 language specification.
+
 ### Fixed
 
-- `pud` rejects unknown and empty targets in the `--target=<value>` form.
+- `pud` rejects unknown and empty targets in the `--target=<value>` form, matching `--target <value>` and `-t <value>` ([#6](https://github.com/puddi-lang/puddi/pull/6)).
 
 ### Performance
 
@@ -32,8 +36,13 @@ Measured with the programs in `bench/` against Rust and MoonBit; see `bench/READ
 ### Documentation
 
 - Documentation site at https://puddi-lang.github.io/puddi-docs/ with a language guide, toolchain and standard library pages, built from [puddi-lang/puddi-docs](https://github.com/puddi-lang/puddi-docs)
+- Complete [Simplified Chinese documentation](https://puddi-lang.github.io/puddi-docs/zh-CN/)
 - Contributing guide, code of conduct, security policy, compiler architecture and release process documents
 - Draft governance model in GOVERNANCE.md, not yet in effect
+
+### Known gaps
+
+The [known conformance gaps in 0.1.0](https://github.com/puddi-lang/puddi/blob/v0.1.0/CHANGELOG.md#known-gaps) still apply to this release.
 
 ## [0.1.0] - 2026-11-18
 
@@ -71,4 +80,5 @@ The conformance suite marks these differences from the spec as expected failures
 - unannotated closure parameters are not inferred from the body or later calls (4.6)
 - plugin exports that use WIT records, variants, enums or flags fail to compile (8.3)
 
+[0.1.1]: https://github.com/puddi-lang/puddi/releases/tag/v0.1.1
 [0.1.0]: https://github.com/puddi-lang/puddi/releases/tag/v0.1.0

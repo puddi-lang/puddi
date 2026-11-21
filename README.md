@@ -36,12 +36,12 @@ Windows (PowerShell):
 irm https://raw.githubusercontent.com/puddi-lang/puddi/main/install.ps1 | iex
 ```
 
-The scripts download the latest [release](https://github.com/puddi-lang/puddi/releases), verify its SHA-256 checksum, put `pud` in `~/.pud/bin` and add that directory to `PATH`. Set `PUD_VERSION=v0.1.0` to pin a release, `PUD_INSTALL` to change the directory, or `PUD_NO_MODIFY_PATH=1` to leave `PATH` alone. Run the script again to upgrade.
+The scripts download the latest [release](https://github.com/puddi-lang/puddi/releases), verify its SHA-256 checksum, put `pud` in `~/.pud/bin` and add that directory to `PATH`. Set `PUD_VERSION=v0.1.1` to pin a release, `PUD_INSTALL` to change the directory, or `PUD_NO_MODIFY_PATH=1` to leave `PATH` alone. Run the script again to upgrade.
 
 From source (current stable Rust):
 
 ```sh
-cargo install --locked --git https://github.com/puddi-lang/puddi --tag v0.1.0
+cargo install --locked --git https://github.com/puddi-lang/puddi --tag v0.1.1
 ```
 
 `pud test` and the browser target also need Node.js 22 or newer.
@@ -73,7 +73,7 @@ The [documentation](https://puddi-lang.github.io/puddi-docs/) has a language gui
 
 ## Status
 
-Puddi 0.1 is the first release. The compiler implements the draft 0.1 [specification](SPEC.md): structs, enums, generics, traits and `dyn Trait`, pattern matching with exhaustiveness checking, `?` and `AnyErr`, `async fn` with structured concurrency, workers, WIT imports and exports, `test` blocks, and a standard library with JSON, HTTP, files, time, randomness and the DOM.
+Puddi 0.1 is the first release series. The compiler implements the draft 0.1 [specification](SPEC.md), including structs, enums, generics, traits and `dyn Trait`, pattern matching with exhaustiveness checking, `?` and `AnyErr`, `async fn` with structured concurrency, workers, WIT imports and exports, `test` blocks, and a standard library with JSON, HTTP, files, time, randomness and the DOM.
 
 The [conformance suite](conformance/README.md) checks the toolchain against the specification: every normative section has passing cases, and cases marked `xfail` record the [known gaps](conformance/README.md#known-non-conformance). Other limitations are listed on the [implementation status](https://puddi-lang.github.io/puddi-docs/reference/status.html) page. The language may still change in 0.x releases.
 
