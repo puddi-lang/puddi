@@ -73,7 +73,7 @@ The [documentation](https://puddi-lang.github.io/puddi-docs/) has a language gui
 
 ## Status
 
-Puddi 0.1 is the first release series. The compiler implements the draft 0.1 [specification](SPEC.md), including structs, enums, generics, traits and `dyn Trait`, pattern matching with exhaustiveness checking, `?` and `AnyErr`, `async fn` with structured concurrency, workers, WIT imports and exports, and `test` blocks. The [standard library](SPEC.md#10-standard-library) includes JSON, CSV, binary encodings, collections, text processing, HTTP, files, time, randomness and the DOM.
+Puddi 0.1 is the first release series. The compiler implements the draft 0.1 [specification](SPEC.md), including structs, enums, generics, traits and `dyn Trait`, pattern matching with exhaustiveness checking, `?` and `AnyErr`, `async fn` with structured concurrency, workers, WIT imports and exports, and `test` blocks. The [standard library](SPEC.md#10-standard-library) includes JSON, CSV, binary encodings, collections, text processing, HTTP, files, dates and timestamps, randomness and the DOM.
 
 The [conformance suite](conformance/README.md) checks the toolchain against the specification: every normative section has passing cases, and cases marked `xfail` record the [known gaps](conformance/README.md#known-non-conformance). Other limitations are listed on the [implementation status](https://puddi-lang.github.io/puddi-docs/reference/status.html) page. The language may still change in 0.x releases.
 

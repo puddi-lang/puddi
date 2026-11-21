@@ -33,3 +33,25 @@ pub fn int_radix(value: I64, base: Int) -> Option<Str> {
     let digits = uint_radix(magnitude, base)?
     Some("-" + digits)
 }
+
+/// Parses ASCII digits in a base from 2 to 36.
+pub fn parse_uint_radix(input: Str, base: Int) -> Option<U64> {
+    if base < 2 || base > 36 || input.is_empty() { return None }
+    let radix = base.wrap_to_u64()
+    var value: U64 = 0
+    for character in input.chars() {
+        let digit = character.to_digit(base)?
+        value = value.checked_mul(radix)?.checked_add(digit.wrap_to_u64())?
+    }
+    Some(value)
+}
+
+/// Parses ASCII digits and an optional leading plus or minus sign.
+pub fn parse_int_radix(input: Str, base: Int) -> Option<I64> {
+    let first = input.chars().next()?
+    if first != '-' && first != '+' { return parse_uint_radix(input, base)?.to_i64() }
+    let magnitude = parse_uint_radix(__str_slice(input, 1, input.utf8_len()), base)?
+    if first == '+' { return magnitude.to_i64() }
+    if magnitude == 9223372036854775808 { return Some(-9223372036854775808) }
+    Some(0 - magnitude.to_i64()?)
+}

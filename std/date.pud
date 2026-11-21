@@ -1,0 +1,162 @@
+// std.date: Gregorian dates and UTC timestamps.
+
+const UNIX_EPOCH_DAY: Int = 719162
+const SECONDS_PER_DAY: I64 = 86400
+
+pub fn is_leap_year(year: Int) -> Bool {
+    year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+}
+
+pub fn days_in_month(year: Int, month: Int) -> Option<Int> {
+    if year < 1 || year > 9999 { return None }
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 -> Some(31)
+        4 | 6 | 9 | 11 -> Some(30)
+        2 -> Some(if is_leap_year(year) { 29 } else { 28 })
+        _ -> None
+    }
+}
+
+fn days_before_year(year: Int) -> Int {
+    let y = year - 1
+    y * 365 + y / 4 - y / 100 + y / 400
+}
+
+fn digits(value: Str, start: Int, end: Int) -> Option<Int> {
+    var number = 0
+    for i in start..end {
+        let digit = __str_byte(value, i) - 48
+        if digit < 0 || digit > 9 { return None }
+        number = 10 * number + digit
+    }
+    Some(number)
+}
+
+fn fixed(value: Int, width: Int) -> Str {
+    let number = value.show()
+    "0".repeat(width - number.utf8_len()) + number
+}
+
+/// A Gregorian date in the years 0001 through 9999.
+@derive(Eq, Ord, Hash)
+pub struct Date {
+    year: Int
+    month: Int
+    day: Int
+}
+
+impl Date {
+    pub fn new(year: Int, month: Int, day: Int) -> Option<Date> {
+        let limit = days_in_month(year, month)?
+        if day < 1 || day > limit { None } else { Some(Date { year, month, day }) }
+    }
+
+    pub fn year(self) -> Int { self.year }
+    pub fn month(self) -> Int { self.month }
+    pub fn day(self) -> Int { self.day }
+
+    /// Parses a date of the form YYYY-MM-DD.
+    pub fn parse(value: Str) -> Option<Date> {
+        if value.utf8_len() != 10 || __str_byte(value, 4) != 45 || __str_byte(value, 7) != 45 {
+            return None
+        }
+        Date.new(digits(value, 0, 4)?, digits(value, 5, 7)?, digits(value, 8, 10)?)
+    }
+
+    pub fn to_epoch_days(self) -> Int {
+        var days = days_before_year(self.year) + self.day - 1
+        for month in 1..self.month {
+            days += days_in_month(self.year, month).unwrap()
+        }
+        days - UNIX_EPOCH_DAY
+    }
+
+    pub fn from_epoch_days(days: Int) -> Option<Date> {
+        let ordinal = days.checked_add(UNIX_EPOCH_DAY)?
+        if ordinal < 0 || ordinal >= days_before_year(10000) { return None }
+
+        var year = 1
+        var upper = 10000
+        while upper - year > 1 {
+            let middle = (year + upper) / 2
+            if days_before_year(middle) <= ordinal { year = middle } else { upper = middle }
+        }
+
+        var day = ordinal - days_before_year(year) + 1
+        for month in 1..=12 {
+            let length = days_in_month(year, month).unwrap()
+            if day <= length { return Date.new(year, month, day) }
+            day -= length
+        }
+        None
+    }
+
+    pub fn add_days(self, days: Int) -> Option<Date> {
+        Date.from_epoch_days(self.to_epoch_days().checked_add(days)?)
+    }
+
+    /// Monday is 1 and Sunday is 7.
+    pub fn weekday(self) -> Int { (self.to_epoch_days() + UNIX_EPOCH_DAY) % 7 + 1 }
+}
+
+impl Show for Date {
+    fn show(self) -> Str {
+        "{fixed(self.year, 4)}-{fixed(self.month, 2)}-{fixed(self.day, 2)}"
+    }
+}
+
+/// A UTC date and time with one-second precision.
+@derive(Eq, Ord, Hash)
+pub struct DateTime {
+    date: Date
+    seconds_of_day: Int
+}
+
+impl DateTime {
+    pub fn new(date: Date, hour: Int, minute: Int, second: Int) -> Option<DateTime> {
+        if hour < 0 || hour >= 24 || minute < 0 || minute >= 60 || second < 0 || second >= 60 {
+            return None
+        }
+        Some(DateTime { date, seconds_of_day: hour * 3600 + minute * 60 + second })
+    }
+
+    pub fn date(self) -> Date { self.date }
+    pub fn hour(self) -> Int { self.seconds_of_day / 3600 }
+    pub fn minute(self) -> Int { self.seconds_of_day / 60 % 60 }
+    pub fn second(self) -> Int { self.seconds_of_day % 60 }
+
+    /// Parses a whole-second UTC timestamp of the form YYYY-MM-DDTHH:MM:SSZ.
+    pub fn parse(value: Str) -> Option<DateTime> {
+        if value.utf8_len() != 20 || __str_byte(value, 10) != 84 || __str_byte(value, 13) != 58 ||
+            __str_byte(value, 16) != 58 || __str_byte(value, 19) != 90 {
+            return None
+        }
+        let date = Date.parse(__str_slice(value, 0, 10))?
+        DateTime.new(date, digits(value, 11, 13)?, digits(value, 14, 16)?, digits(value, 17, 19)?)
+    }
+
+    pub fn to_unix_seconds(self) -> I64 {
+        self.date.to_epoch_days().wrap_to_i64() * SECONDS_PER_DAY + self.seconds_of_day.wrap_to_i64()
+    }
+
+    pub fn from_unix_seconds(seconds: I64) -> Option<DateTime> {
+        var days = seconds / SECONDS_PER_DAY
+        var within_day = seconds % SECONDS_PER_DAY
+        if within_day < 0 {
+            days -= 1
+            within_day += SECONDS_PER_DAY
+        }
+        let date = Date.from_epoch_days(days.to_int()?)?
+        Some(DateTime { date, seconds_of_day: within_day.wrap_to_int() })
+    }
+
+    pub fn add_seconds(self, seconds: I64) -> Option<DateTime> {
+        DateTime.from_unix_seconds(self.to_unix_seconds().checked_add(seconds)?)
+    }
+}
+
+impl Show for DateTime {
+    fn show(self) -> Str {
+        "{self.date}T{fixed(self.hour(), 2)}:{fixed(self.minute(), 2)}:{fixed(self.second(), 2)}Z"
+    }
+}

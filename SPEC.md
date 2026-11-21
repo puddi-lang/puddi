@@ -762,7 +762,7 @@ A module that the build target does not provide is a compile error to import.
 | Module | browser | wasi | plugin |
 |---|---|---|---|
 | core (prelude and built-in collections) | yes | yes | yes |
-| `std.bytes`, `std.collections`, `std.csv`, `std.encoding`, `std.fmt`, `std.iter`, `std.math`, `std.path`, `std.stats`, `std.text` | yes | yes | yes |
+| `std.bytes`, `std.collections`, `std.csv`, `std.date`, `std.encoding`, `std.fmt`, `std.iter`, `std.math`, `std.path`, `std.stats`, `std.text` | yes | yes | yes |
 | `std.json` | yes | yes | yes |
 | `std.log` | yes | yes | yes |
 | `std.time` | yes | yes | host |
@@ -784,10 +784,12 @@ Import portable modules by name, for example `import std.csv` to use `csv.parse`
 |---|---|---|
 | `std.bytes` | `Endian.Big`, `Endian.Little`, `pack_u16`, `pack_u32`, `pack_u64`, `Reader` | The reader snapshots the bytes at construction. It supports `read`, `read_u8`, typed reads with explicit byte order, `skip`, `position`, and `remaining`. Failed reads and skips preserve the position. |
 | `std.collections` | `Deque<T>`, `PriorityQueue<T>`, `count_by`, `group_by` | The deque supports amortized constant-time insertion and removal at either end. The priority queue pops the smallest value in logarithmic time. Grouping preserves input order within each group. |
-| `std.csv` | `parse`, `stringify` | Parses comma-separated rows with quoted fields, doubled quotes, and LF, CRLF, or CR endings. It accepts rows of varying lengths. Serialization uses CRLF and writes a zero-field row as one empty field. Parse errors carry a zero-based byte offset. |
+| `std.csv` | `parse`, `stringify`, `Format.new` | Reads comma-separated rows with quoted fields, doubled quotes, and LF, CRLF, or CR endings. It accepts rows of varying lengths. A `Format` can parse and write using a tab or a printable ASCII separator other than a double quote. Serialization uses CRLF and writes a zero-field row as one empty field. Parse errors carry a zero-based byte offset. |
+| `std.date` | `Date`, `DateTime`, `days_in_month`, `is_leap_year` | Uses the Gregorian calendar throughout years 0001 through 9999. Dates parse and display as `YYYY-MM-DD` and can convert to days since 1970-01-01. Timestamps parse and display as `YYYY-MM-DDTHH:MM:SSZ` and can convert to Unix seconds. Invalid or out-of-range values return `None`. |
 | `std.encoding` | `hex_encode`, `hex_decode`, `base64_encode`, `base64_decode`, `base64url_encode`, `base64url_decode`, `percent_encode`, `percent_decode` | Hex accepts either case and writes lowercase. Base64 uses canonical padding, and Base64url uses the URL-safe alphabet without padding. Percent encoding preserves ASCII letters, digits, `-`, `.`, `_`, and `~`. Percent decoding preserves literal plus signs. Decoders return bytes or an error with a zero-based byte offset. |
-| `std.fmt` | `join`, `int_radix`, `uint_radix` | Joins values using `Show`. Radix formatting supports bases 2 through 36, uses lowercase digits, and returns `None` for other bases. |
+| `std.fmt` | `join`, `int_radix`, `uint_radix`, `parse_int_radix`, `parse_uint_radix` | Joins values using `Show`. Radix formatting and parsing support bases 2 through 36. Output uses lowercase digits. Parsing accepts either letter case, and signed parsing accepts an optional leading sign. Invalid input and overflow return `None`. |
 | `std.iter` | `once`, `repeat`, `from_fn`, `unfold` | Creates lazy iterators from values, callbacks, or state transitions. `repeat` is infinite. Callback-based sources end at their first `None`. |
+| `std.json` | `parse`, `stringify`, `pretty`, `Json.at_pointer` | Writes compact or two-space-indented JSON. A pointer traverses object keys and array indices with slash-separated segments. `~0` represents a tilde, `~1` represents a slash, and the empty pointer selects the root value. Invalid pointers and missing values return `None`. |
 | `std.path` | `is_absolute`, `normalize`, `join`, `parent`, `file_name`, `stem`, `extension` | Handles slash-separated paths lexically. A leading slash denotes the root, and an absolute right operand replaces the left operand in `join`. Normalizing an empty relative path gives `.`. |
 | `std.stats` | `summarize`, `median` | Summaries include count, mean, extrema, and population and sample variance and standard deviation. Empty samples and non-finite values return `None`. Summary overflow and sample variance with fewer than two observations also return `None`. |
 | `std.text` | `strip_prefix`, `strip_suffix`, `truncate`, `pad_start`, `pad_end` | Truncation lengths and padding widths count Unicode scalars. Prefix and suffix matching is exact. |

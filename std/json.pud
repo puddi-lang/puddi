@@ -33,6 +33,21 @@ impl Json {
             _ -> None
         }
     }
+    /// Resolves a JSON Pointer string. The empty pointer selects the current value.
+    pub fn at_pointer(self, pointer: Str) -> Option<Json> {
+        if pointer.is_empty() { return Some(self) }
+        if !pointer.starts_with("/") { return None }
+        var value = self
+        for part in __str_slice(pointer, 1, pointer.utf8_len()).split("/") {
+            let key = pointer_key(part)?
+            value = match value {
+                Json.Object(fields) -> fields.get(key)?
+                Json.Array(items) -> items.get(pointer_index(key)?)?
+                _ -> return None
+            }
+        }
+        Some(value)
+    }
     pub fn is_null(self) -> Bool {
         match self {
             Json.Null -> true
@@ -75,6 +90,34 @@ impl Json {
             _ -> None
         }
     }
+}
+
+fn pointer_key(token: Str) -> Option<Str> {
+    if !token.contains("~") { return Some(token) }
+    let result = StrBuilder.new()
+    let characters = token.chars()
+    while let Some(character) = characters.next() {
+        if character == '~' {
+            match characters.next()? {
+                '0' -> result.push_char('~')
+                '1' -> result.push_char('/')
+                _ -> return None
+            }
+        } else {
+            result.push_char(character)
+        }
+    }
+    Some(result.to_str())
+}
+
+fn pointer_index(token: Str) -> Option<Int> {
+    if token.is_empty() || (token.utf8_len() > 1 && token.starts_with("0")) { return None }
+    var index = 0
+    for character in token.chars() {
+        let digit = character.to_digit(10)?
+        index = index.checked_mul(10)?.checked_add(digit)?
+    }
+    Some(index)
 }
 
 impl Show for Json {
@@ -121,7 +164,12 @@ fn write_str(b: StrBuilder, s: Str) {
     b.push_byte(34)
 }
 
-fn write_value(b: StrBuilder, v: Json) {
+fn indent_line(b: StrBuilder, depth: Int) {
+    b.push_byte(10)
+    for _i in 0..depth { b.push("  ") }
+}
+
+fn write_value(b: StrBuilder, v: Json, formatted: Bool, depth: Int) {
     match v {
         Json.Null -> b.push("null")
         Json.Bool(x) -> b.push(if x { "true" } else { "false" })
@@ -141,8 +189,10 @@ fn write_value(b: StrBuilder, v: Json) {
             for x in xs {
                 if !first { b.push_byte(44) }
                 first = false
-                write_value(b, x)
+                if formatted { indent_line(b, depth + 1) }
+                write_value(b, x, formatted, depth + 1)
             }
+            if formatted && !first { indent_line(b, depth) }
             b.push_byte(93)
         }
         Json.Object(m) -> {
@@ -151,10 +201,13 @@ fn write_value(b: StrBuilder, v: Json) {
             for (k, x) in m {
                 if !first { b.push_byte(44) }
                 first = false
+                if formatted { indent_line(b, depth + 1) }
                 write_str(b, k)
                 b.push_byte(58)
-                write_value(b, x)
+                if formatted { b.push_byte(32) }
+                write_value(b, x, formatted, depth + 1)
             }
+            if formatted && !first { indent_line(b, depth) }
             b.push_byte(125)
         }
     }
@@ -163,11 +216,18 @@ fn write_value(b: StrBuilder, v: Json) {
 /// Serializes a value to compact JSON text.
 pub fn stringify(v: Json) -> Str {
     let b = StrBuilder.new()
-    write_value(b, v)
+    write_value(b, v, false, 0)
     b.to_str()
 }
 
 pub fn encode(v: Json) -> Str { stringify(v) }
+
+/// Serializes JSON with two spaces per indentation level.
+pub fn pretty(v: Json) -> Str {
+    let b = StrBuilder.new()
+    write_value(b, v, true, 0)
+    b.to_str()
+}
 
 struct Parser {
     s: Str
@@ -328,9 +388,13 @@ impl Parser {
                     b.push_byte(12)
                 } else if e == 117 {
                     var u = self.hex4()?
-                    if u >= 0xD800 && u < 0xDC00 && self.peek() == 92 {
-                        self.pos += 2
+                    if u >= 0xD800 && u < 0xDC00 {
+                        if self.peek() != 92 { return Err(self.err("expected a low surrogate escape")) }
+                        self.pos += 1
+                        if self.peek() != 117 { return Err(self.err("expected a low surrogate escape")) }
+                        self.pos += 1
                         let lo = self.hex4()?
+                        if lo < 0xDC00 || lo >= 0xE000 { return Err(self.err("invalid low surrogate")) }
                         u = 0x10000 + ((u - 0xD800) << 10) + (lo - 0xDC00)
                     }
                     match Char.from_u32(u.wrap_to_u32()) {

@@ -7,6 +7,11 @@ All notable changes to Puddi are recorded here. The format follows [Keep a Chang
 ### Added
 
 - Nine portable standard library modules for browser, WASI and plugins. They provide deques and priority queues, lazy iterator sources, Unicode text helpers, radix formatting, binary readers, hex and Base64 codecs, percent encoding, lexical paths, CSV and descriptive statistics.
+- `std.date` adds Gregorian dates, UTC timestamps, Unix epoch conversions and checked arithmetic. CSV supports configurable delimiters, JSON supports pretty printing and pointer lookup, and `std.fmt` parses signed and unsigned integers in bases 2 through 36.
+
+### Fixed
+
+- JSON parsing rejects malformed surrogate escape pairs.
 
 ## [0.1.1] - 2026-11-21
 

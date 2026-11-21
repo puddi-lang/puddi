@@ -249,6 +249,7 @@ std_modules! {
     "bytes" => PORTABLE,
     "collections" => PORTABLE,
     "csv" => PORTABLE,
+    "date" => PORTABLE,
     "encoding" => PORTABLE,
     "fmt" => PORTABLE,
     "iter" => PORTABLE,

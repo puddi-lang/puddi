@@ -1,0 +1,65 @@
+// spec: 10.2 10.3
+// host: node
+import std.csv
+import std.date
+import std.fmt
+import std.json
+
+fn main() {
+    let tsv = csv.Format.new('\t').unwrap()
+    let table = tsv.parse("1969-12-31T23:59:59Z\t\"雪\t\"\t-8000000000000000\r\n").unwrap()
+    assert_eq(tsv.stringify(table), "1969-12-31T23:59:59Z\t\"雪\t\"\t-8000000000000000\r\n")
+    assert_eq(csv.parse("a,\"b,c\"\r\n").unwrap(), [["a", "b,c"]])
+    assert_eq(csv.stringify([["a", "b,c"]]), "a,\"b,c\"\r\n")
+    assert_eq(tsv.parse("\"a\"x").unwrap_err().offset, 3)
+    assert(csv.Format.new('\n').is_none())
+    assert(csv.Format.new('"').is_none())
+
+    let timestamp = date.DateTime.parse(table[0][0]).unwrap()
+    assert_eq(timestamp.to_unix_seconds(), -1)
+    assert_eq(date.DateTime.from_unix_seconds(-1).unwrap(), timestamp)
+    assert_eq(date.DateTime.from_unix_seconds(-86401).unwrap().show(), "1969-12-30T23:59:59Z")
+    assert_eq(timestamp.add_seconds(1).unwrap().show(), "1970-01-01T00:00:00Z")
+    assert_eq(timestamp.date().weekday(), 3)
+    let leap_day = date.Date.parse("2000-02-29").unwrap()
+    assert_eq(leap_day.add_days(1).unwrap().show(), "2000-03-01")
+    assert(date.Date.parse("1900-02-29").is_none())
+    assert(date.DateTime.parse("2000-01-01T00:00:60Z").is_none())
+    assert_eq(date.DateTime.from_unix_seconds(-62135596800).unwrap().show(), "0001-01-01T00:00:00Z")
+    assert(date.DateTime.from_unix_seconds(-62135596801).is_none())
+    assert_eq(date.DateTime.from_unix_seconds(253402300799).unwrap().show(), "9999-12-31T23:59:59Z")
+    assert(date.DateTime.from_unix_seconds(253402300800).is_none())
+    assert(timestamp.add_seconds(-9223372036854775808).is_none())
+
+    let limit = fmt.parse_int_radix(table[0][2], 16).unwrap()
+    assert_eq(limit, -9223372036854775808)
+    assert_eq(fmt.int_radix(limit, 16).unwrap(), table[0][2])
+    assert_eq(fmt.parse_int_radix("+Z", 36).unwrap(), 35)
+    assert_eq(fmt.parse_uint_radix("FFFFFFFFFFFFFFFF", 16).unwrap(), 18446744073709551615)
+    assert(fmt.parse_int_radix("8000000000000000", 16).is_none())
+    assert(fmt.parse_int_radix("-8000000000000001", 16).is_none())
+    assert(fmt.parse_uint_radix("10000000000000000", 16).is_none())
+    assert(fmt.parse_uint_radix(" 1", 10).is_none())
+    assert(fmt.parse_int_radix("+", 10).is_none())
+
+    let value = json.parse("\{\"a/b\":\{\"~1\":[\"\\uD83D\\uDE00\",\{\},[]]\}\}").unwrap()
+    assert_eq(value.at_pointer("").unwrap(), value)
+    assert_eq(value.at_pointer("/a~1b/~01/0").unwrap().as_str().unwrap().chars().count(), 1)
+    assert_eq(value.at_pointer("/a~1b/~01/0").unwrap().as_str().unwrap().chars().next().unwrap().to_u32(), 0x1F600)
+    assert(value.at_pointer("/a~1b/~01/00").is_none())
+    assert(value.at_pointer("/a~1b/~01/2147483648").is_none())
+    assert(value.at_pointer("/a~1b/~2").is_none())
+    assert_eq(json.parse("\{\"\":null\}").unwrap().at_pointer("/").unwrap(), json.Json.Null)
+    assert(json.parse("\"\\uD834\\xDD1E\"").is_err())
+    assert(json.parse("\"\\uD834\\u0041\"").is_err())
+    assert(json.parse("\"\\uDD1E\"").is_err())
+
+    let report = json.Json.Array([json.Json.String(timestamp.show()), value])
+    let pretty = json.pretty(report)
+    assert(pretty.starts_with("[\n  \"1969-12-31T23:59:59Z\",\n  \{\n    \"a/b\": \{"))
+    assert_eq(json.parse(pretty).unwrap(), report)
+    assert_eq(json.pretty(json.parse("[1,\{\},[]]").unwrap()), "[\n  1,\n  \{\},\n  []\n]")
+    assert_eq(json.stringify(json.parse("[1,\{\},[]]").unwrap()), "[1,\{\},[]]")
+    print("standard library data exchange ok")
+}
+//> standard library data exchange ok

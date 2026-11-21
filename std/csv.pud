@@ -14,6 +14,7 @@ impl Error for ParseErr {}
 
 struct Parser {
     input: Str
+    delimiter: Int
     var pos: Int
 }
 
@@ -43,7 +44,8 @@ impl Parser {
         let start = self.pos
         loop {
             match self.peek() {
-                -1 | 44 | 10 | 13 -> return Ok(__str_slice(self.input, start, self.pos))
+                -1 | 10 | 13 -> return Ok(__str_slice(self.input, start, self.pos))
+                byte if byte == self.delimiter -> return Ok(__str_slice(self.input, start, self.pos))
                 34 -> return Err(ParseErr { offset: self.pos, reason: "quote in unquoted field" })
                 _ -> { self.pos += 1 }
             }
@@ -51,16 +53,37 @@ impl Parser {
     }
 }
 
-/// Reads comma-separated rows. Accepts LF, CRLF and CR record endings.
-pub fn parse(input: Str) -> Result<List<List<Str>>, ParseErr> {
-    let parser = Parser { input, pos: 0 }
+/// A delimited text format with CSV quoting rules.
+pub struct Format {
+    delimiter: Char
+}
+
+impl Format {
+    /// Accepts a tab or a printable ASCII character other than a double quote.
+    pub fn new(delimiter: Char) -> Option<Format> {
+        let code = delimiter.to_u32()
+        if code != 9 && (code < 32 || code > 126 || code == 34) { return None }
+        Some(Format { delimiter })
+    }
+
+    pub fn parse(self, input: Str) -> Result<List<List<Str>>, ParseErr> {
+        parse_rows(input, self.delimiter.to_u32().wrap_to_int())
+    }
+
+    pub fn stringify(self, rows: List<List<Str>>) -> Str {
+        write_rows(rows, self.delimiter)
+    }
+}
+
+fn parse_rows(input: Str, delimiter: Int) -> Result<List<List<Str>>, ParseErr> {
+    let parser = Parser { input, delimiter, pos: 0 }
     let rows: List<List<Str>> = []
     while parser.peek() != -1 {
         let row: List<Str> = []
         loop {
             row.push(parser.field()?)
             match parser.peek() {
-                44 -> { parser.pos += 1 }
+                byte if byte == delimiter -> { parser.pos += 1 }
                 10 | 13 -> {
                     let cr = parser.peek() == 13
                     parser.pos += 1
@@ -68,7 +91,10 @@ pub fn parse(input: Str) -> Result<List<List<Str>>, ParseErr> {
                     break
                 }
                 -1 -> break
-                _ -> return Err(ParseErr { offset: parser.pos, reason: "expected a comma or record ending" })
+                _ -> {
+                    let reason = if delimiter == 44 { "expected a comma or record ending" } else { "expected a delimiter or record ending" }
+                    return Err(ParseErr { offset: parser.pos, reason })
+                }
             }
         }
         rows.push(row)
@@ -76,13 +102,13 @@ pub fn parse(input: Str) -> Result<List<List<Str>>, ParseErr> {
     Ok(rows)
 }
 
-/// Writes CSV with CRLF record endings. A zero-field row is written as one empty field.
-pub fn stringify(rows: List<List<Str>>) -> Str {
+fn write_rows(rows: List<List<Str>>, delimiter: Char) -> Str {
     let out = StrBuilder.new()
+    let separator = delimiter.to_str()
     for row in rows {
         for (index, field) in row.enumerate() {
-            if index > 0 { out.push_byte(44) }
-            if field.contains(",") || field.contains("\"") || field.contains("\r") || field.contains("\n") {
+            if index > 0 { out.push(separator) }
+            if field.contains(separator) || field.contains("\"") || field.contains("\r") || field.contains("\n") {
                 out.push_byte(34)
                 out.push(field.replace("\"", "\"\""))
                 out.push_byte(34)
@@ -94,3 +120,9 @@ pub fn stringify(rows: List<List<Str>>) -> Str {
     }
     out.to_str()
 }
+
+/// Reads comma-separated rows. Accepts LF, CRLF and CR record endings.
+pub fn parse(input: Str) -> Result<List<List<Str>>, ParseErr> { parse_rows(input, 44) }
+
+/// Writes CSV with CRLF record endings. A zero-field row is written as one empty field.
+pub fn stringify(rows: List<List<Str>>) -> Str { write_rows(rows, ',') }
