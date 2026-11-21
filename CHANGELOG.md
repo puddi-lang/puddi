@@ -12,6 +12,8 @@ All notable changes to Puddi are recorded here. The format follows [Keep a Chang
 ### Fixed
 
 - JSON parsing rejects malformed surrogate escape pairs.
+- Float literals can be used on either side of a binary operator with a fixed-width integer when a lossless common type exists.
+- Trait implementations resolve `Self.Item` and other associated types from the current impl in method signatures and local annotations.
 
 ## [0.1.1] - 2026-11-21
 

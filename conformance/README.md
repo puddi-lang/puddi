@@ -45,8 +45,6 @@ The `xfail` cases document where the current compiler differs from the draft 0.1
 |---|---|---|
 | `02-lexical/naming_warnings.pud` | 2.4 | no warnings for naming-convention violations |
 | `02-lexical/naming_lowercase_type.pud` | 2.4 | struct literals need an uppercase type name |
-| `03-types/widening_float_literal.pud` | 3.7 | `U8 + 0.5` does not default the literal to `Float` |
-| `03-types/impl_self_assoc_type.pud` | 3.12 | `Self.Item` does not resolve inside an impl |
 | `03-types/trait_duplicate_impl.pud` | 3.12 | a duplicate impl is accepted |
 | `04-expressions/closure_param_inference.pud` | 4.6 | `let inc = \|x\| x + 1` needs an annotation |
 | `08-interop/wit_record_exports` | 8.3 | exports that use WIT records, variants, enums or flags fail to compile |

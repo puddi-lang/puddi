@@ -1,9 +1,16 @@
 // spec: 3.7 2.6
-// xfail: a float literal next to an unsigned integer operand does not default to Float
 // A float literal whose context cannot be a float type defaults to `Float`,
 // so `U8 + 0.5` widens both operands to `F64`.
+fn add_single(value: U8) -> F32 { value + 0.5 }
+
 fn main() {
     let u8v: U8 = 250
     print(u8v + 0.5)
+    print(0.5 + u8v)
+    print(u8v > -0.5)
+    print(add_single(u8v))
 }
+//> 250.5
+//> 250.5
+//> true
 //> 250.5

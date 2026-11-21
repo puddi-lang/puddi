@@ -1,17 +1,44 @@
 // spec: 3.12
-// xfail: `Self.Item` does not resolve inside an impl block
 // `Self.Item` names the associated type inside an impl, as it does in the trait.
 struct Countdown { var n: Int }
+
+trait Label {
+    type Item
+    fn label(self) -> Self.Item
+}
+
+impl Label for Countdown {
+    type Item = Str
+    fn label(self) -> Self.Item { "remaining" }
+}
+
 impl Iterator for Countdown {
     type Item = Int
     fn next(self) -> Option<Self.Item> {
         if self.n == 0 { return None }
         self.n -= 1
-        Some(self.n + 1)
+        let value: Self.Item = self.n + 1
+        Some(value)
     }
 }
+
+struct Holder<T> { value: T }
+
+impl<T> Label for Holder<T> {
+    type Item = T
+    fn label(self) -> Self.Item {
+        let value: Self.Item = self.value
+        value
+    }
+}
+
 fn main() {
     let c = Countdown { n: 2 }
     print(c.next())
+    print(c.label())
+    let h = Holder { value: "generic" }
+    print(h.label())
 }
 //> Some(2)
+//> remaining
+//> generic

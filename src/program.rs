@@ -117,6 +117,15 @@ pub enum FnOwner {
     Trait(TraitId),
 }
 
+impl FnOwner {
+    pub fn impl_id(self) -> Option<ImplId> {
+        match self {
+            Self::Impl(id) => Some(id),
+            _ => None,
+        }
+    }
+}
+
 pub struct FnDef {
     pub name: String,
     pub module: ModId,
@@ -222,6 +231,7 @@ pub struct TyCx<'a> {
     pub module: ModId,
     pub generics: &'a [String],
     pub self_ty: Option<Ty>,
+    pub self_impl: Option<ImplId>,
 }
 
 const PORTABLE: &[&str] = &["browser", "wasi", "plugin"];
@@ -452,6 +462,9 @@ impl Program {
                 if segs[0].name == "Self" {
                     let st = cx.self_ty.clone().ok_or_else(|| Diag::new(*span, "`Self` is only available inside traits and impls"))?;
                     if segs.len() == 2 {
+                        if let Some(ty) = cx.self_impl.and_then(|id| self.impls[id].assoc.get(&segs[1].name)) {
+                            return Ok(ty.clone());
+                        }
                         return Ok(self.normalize_proj(Ty::Proj(Box::new(st), segs[1].name.clone())));
                     }
                 }
@@ -996,7 +1009,7 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
             _ => unreachable!(),
         };
         let names: Vec<String> = gens.iter().map(|g| g.name.name.clone()).collect();
-        let cx = TyCx { module: p.adts[*id].module, generics: &names, self_ty: None };
+        let cx = TyCx { module: p.adts[*id].module, generics: &names, self_ty: None, self_impl: None };
         let mut gdefs = Vec::new();
         for g in gens {
             let mut bounds = Vec::new();
@@ -1017,7 +1030,7 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
                 continue;
             }
             let gens = p.aliases[i].generics.clone();
-            let cx = TyCx { module: p.aliases[i].module, generics: &gens, self_ty: None };
+            let cx = TyCx { module: p.aliases[i].module, generics: &gens, self_ty: None, self_impl: None };
             if let Ok(t) = p.resolve_ty(&cx, &p.aliases[i].ty.clone()) {
                 p.aliases[i].resolved = Some(t);
             }
@@ -1026,7 +1039,7 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
     for i in 0..p.aliases.len() {
         if p.aliases[i].resolved.is_none() {
             let gens = p.aliases[i].generics.clone();
-            let cx = TyCx { module: p.aliases[i].module, generics: &gens, self_ty: None };
+            let cx = TyCx { module: p.aliases[i].module, generics: &gens, self_ty: None, self_impl: None };
             if let Err(e) = p.resolve_ty(&cx, &p.aliases[i].ty.clone()) {
                 errs.push(e);
             }
@@ -1036,7 +1049,7 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
     for (id, item) in &adt_items {
         let names: Vec<String> = p.adts[*id].generics.iter().map(|g| g.name.clone()).collect();
         let self_ty = Ty::Adt(*id, (0..names.len() as u32).map(Ty::Param).collect());
-        let cx = TyCx { module: p.adts[*id].module, generics: &names, self_ty: Some(self_ty) };
+        let cx = TyCx { module: p.adts[*id].module, generics: &names, self_ty: Some(self_ty), self_impl: None };
         let resolve_fields = |p: &Program, fields: &[ast::Field], errs: &mut Vec<Diag>| -> Vec<FieldDef> {
             let mut out: Vec<FieldDef> = Vec::new();
             for f in fields {
@@ -1103,7 +1116,7 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
         let ast::ItemKind::Trait(td) = &item.kind else { unreachable!() };
         let mut names = vec!["Self".to_string()];
         names.extend(td.generics.iter().map(|g| g.name.name.clone()));
-        let cx = TyCx { module: p.traits[*tid].module, generics: &names, self_ty: Some(Ty::Param(0)) };
+        let cx = TyCx { module: p.traits[*tid].module, generics: &names, self_ty: Some(Ty::Param(0)), self_impl: None };
         let mut gdefs = Vec::new();
         for g in &td.generics {
             let mut bounds = Vec::new();
@@ -1173,7 +1186,7 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
     // 8. impls
     for pi in pending_impls {
         let names: Vec<String> = pi.decl.generics.iter().map(|g| g.name.name.clone()).collect();
-        let cx0 = TyCx { module: pi.module, generics: &names, self_ty: None };
+        let cx0 = TyCx { module: pi.module, generics: &names, self_ty: None, self_impl: None };
         let self_ty = match p.resolve_ty(&cx0, &pi.decl.self_ty) {
             Ok(t) => t,
             Err(e) => {
@@ -1181,7 +1194,7 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
                 continue;
             }
         };
-        let cx = TyCx { module: pi.module, generics: &names, self_ty: Some(self_ty.clone()) };
+        let cx = TyCx { module: pi.module, generics: &names, self_ty: Some(self_ty.clone()), self_impl: None };
         let mut gdefs = Vec::new();
         for g in &pi.decl.generics {
             let mut bounds = Vec::new();
@@ -1328,7 +1341,7 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
 
     // 10. consts
     for i in 0..p.consts.len() {
-        let cx = TyCx { module: p.consts[i].module, generics: &[], self_ty: None };
+        let cx = TyCx { module: p.consts[i].module, generics: &[], self_ty: None, self_impl: None };
         match p.resolve_ty(&cx, &p.consts[i].ty_expr.clone()) {
             Ok(t) => p.consts[i].ty = t,
             Err(e) => errs.push(e),
@@ -1382,7 +1395,7 @@ fn resolve_fn(p: &Program, fd: &Arc<ast::FnDecl>, module: ModId, outer: &[Generi
         }
         names.push(g.name.name.clone());
     }
-    let cx = TyCx { module, generics: &names, self_ty: self_ty.clone() };
+    let cx = TyCx { module, generics: &names, self_ty: self_ty.clone(), self_impl: owner.impl_id() };
     let mut generics: Vec<GenericDef> = outer.to_vec();
     for g in &fd.generics {
         let mut bounds = Vec::new();

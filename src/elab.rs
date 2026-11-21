@@ -132,6 +132,7 @@ struct Elab<'g, 'p> {
     cxs: Vec<FnCx>,
     module: ModId,
     self_ty: Option<Ty>,
+    self_impl: Option<ImplId>,
     targs: Vec<Ty>,
     gen_names: Vec<String>,
     next_label: u32,
@@ -149,6 +150,7 @@ fn elaborate_fn(g: &mut Global, inst: &FnInst) -> ir::Func {
         cxs: Vec::new(),
         module: f.module,
         self_ty: f.self_ty.as_ref().map(|t| prog.normalize_proj(t.subst(&inst.targs))),
+        self_impl: f.owner.impl_id(),
         targs: inst.targs.clone(),
         gen_names: f.generics.iter().map(|g| g.name.clone()).collect(),
         next_label: 0,
@@ -515,7 +517,7 @@ impl<'g, 'p> Elab<'g, 'p> {
     }
 
     fn resolve_ty(&mut self, t: &ast::TypeExpr) -> Ty {
-        let cx = TyCx { module: self.module, generics: &self.gen_names, self_ty: self.self_ty.clone() };
+        let cx = TyCx { module: self.module, generics: &self.gen_names, self_ty: self.self_ty.clone(), self_impl: self.self_impl };
         match self.prog.resolve_ty(&cx, t) {
             Ok(ty) => self.prog.normalize_proj(ty.subst(&self.targs)),
             Err(d) => {
@@ -1169,7 +1171,7 @@ impl<'g, 'p> Elab<'g, 'p> {
         if !is_const_expr(&value) {
             self.err(c.value.span, "constant initializers must be constant expressions (literals, other constants, operators and constructors)");
         }
-        let cx = TyCx { module: c.module, generics: &[], self_ty: None };
+        let cx = TyCx { module: c.module, generics: &[], self_ty: None, self_impl: None };
         let decl_ty = self.prog_const_ty(cid, &cx);
         let saved_targs = std::mem::take(&mut self.targs);
         let saved_gen = std::mem::take(&mut self.gen_names);
@@ -1815,7 +1817,7 @@ impl<'g, 'p> Elab<'g, 'p> {
                 }
                 return mk(ExprKind::Unreachable, if is_cmp { Ty::Bool } else { Ty::Error }, span);
             }
-            let (a, b, ty) = self.unify_numeric(a, b, span, op);
+            let (a, b, ty) = self.unify_numeric(a, b, span, op, arith_expect);
             if matches!(op, BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr) {
                 let rt = self.resolve(&ty);
                 if matches!(rt, Ty::Float(_)) || matches!(self.var_kind(&rt), Some(VarKind::Float)) {
@@ -1875,9 +1877,21 @@ impl<'g, 'p> Elab<'g, 'p> {
     }
 
     /// Bring two numeric operands to a common type.
-    fn unify_numeric(&mut self, a: Expr, b: Expr, span: Span, op: BinOp) -> (Expr, Expr, Ty) {
+    fn unify_numeric(&mut self, a: Expr, b: Expr, span: Span, op: BinOp, expect: Option<&Ty>) -> (Expr, Expr, Ty) {
         let at = self.resolve(&a.ty);
         let bt = self.resolve(&b.ty);
+        // A float literal cannot take its type from a concrete integer operand.
+        let (at, bt) = match (&at, &bt) {
+            (Ty::Int(_), Ty::Var(_)) if self.var_kind(&bt) == Some(VarKind::Float) => {
+                let bt = self.resolve_float_operand(&bt, expect);
+                (at, bt)
+            }
+            (Ty::Var(_), Ty::Int(_)) if self.var_kind(&at) == Some(VarKind::Float) => {
+                let at = self.resolve_float_operand(&at, expect);
+                (at, bt)
+            }
+            _ => (at, bt),
+        };
         if at.is_numeric() && bt.is_numeric() && at != bt {
             if matches!(op, BinOp::Shl | BinOp::Shr) {
                 // shift amount takes the left operand's type when it widens
@@ -1900,6 +1914,15 @@ impl<'g, 'p> Elab<'g, 'p> {
             self.err(span, format!("cannot apply `{}` to `{x}` and `{y}`", op.text()));
         }
         (a, b, at)
+    }
+
+    fn resolve_float_operand(&mut self, literal: &Ty, expect: Option<&Ty>) -> Ty {
+        if let Some(ty @ Ty::Float(_)) = expect.map(|t| self.resolve(t)) {
+            self.unify(literal, &ty);
+            ty
+        } else {
+            self.default_var(literal)
+        }
     }
 
     fn assign(&mut self, op: Option<BinOp>, l: &ast::Expr, r: &ast::Expr, span: Span) -> Expr {
