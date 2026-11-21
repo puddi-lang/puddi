@@ -373,7 +373,7 @@ impl<'g, 'p> Elab<'g, 'p> {
     }
 
     fn warn_local_name(&mut self, id: &ast::Ident) {
-        if self.prog.modules[self.module].pkg.is_source() {
+        if self.prog.modules[self.module].source_file == Some(id.span.file) {
             if let Some(warning) = Naming::Snake.warning(id) {
                 self.g.warn(warning);
             }

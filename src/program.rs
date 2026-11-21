@@ -114,6 +114,8 @@ pub enum Def {
 pub struct ModuleInfo {
     pub path: String,
     pub pkg: Pkg,
+    /// File ID of the author-written source, before synthetic items are added.
+    pub source_file: Option<u32>,
     pub items: HashMap<String, (Def, bool)>,
     pub imports: HashMap<String, (Def, Span)>,
 }
@@ -294,6 +296,7 @@ pub struct ModSource {
     pub path: String,
     pub pkg: Pkg,
     pub ast: ast::Module,
+    pub source_file: Option<u32>,
     /// Module path prefix of the package ("" for the root package).
     pub prefix: String,
     /// Dependency import names of the package -> their module path prefixes.
@@ -896,7 +899,10 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
     };
     // 1. modules
     for s in &sources {
-        p.modules.push(ModuleInfo { path: s.path.clone(), pkg: s.pkg, items: HashMap::new(), imports: HashMap::new() });
+        p.modules.push(ModuleInfo {
+            path: s.path.clone(), pkg: s.pkg, source_file: s.source_file,
+            items: HashMap::new(), imports: HashMap::new(),
+        });
     }
     p.prelude = sources.iter().position(|s| s.pkg == Pkg::Prelude).unwrap_or(0);
     {
@@ -932,21 +938,19 @@ pub fn build(sources: Vec<ModSource>, target: &str) -> Result<Program, Vec<Diag>
     let mut adt_items: Vec<(AdtId, ast::Item)> = Vec::new();
     let mut trait_items: Vec<(TraitId, ast::Item)> = Vec::new();
     for (mid, s) in sources.iter().enumerate() {
-        if s.pkg.is_source() {
-            if let Some(item) = s.ast.items.first() {
-                let path = s.path.strip_prefix(&format!("{}.", s.prefix)).unwrap_or(&s.path);
-                for name in path.split('.') {
-                    p.warnings.extend(Naming::Snake.warning(&ast::Ident {
-                        name: name.into(), span: Span::new(item.span.file, 0, 0),
-                    }));
-                }
+        if let Some(file) = s.source_file {
+            let path = s.path.strip_prefix(&format!("{}.", s.prefix)).unwrap_or(&s.path);
+            for name in path.split('.') {
+                p.warnings.extend(Naming::Snake.warning(&ast::Ident {
+                    name: name.into(), span: Span::new(file, 0, 0),
+                }));
             }
         }
         for item in &s.ast.items {
             if !target_matches(&item.attrs, target) {
                 continue;
             }
-            if s.pkg.is_source() {
+            if s.source_file == Some(item.span.file) {
                 item_names(item, &mut p.warnings);
             }
             let is_pub = item.vis != ast::Vis::Private;

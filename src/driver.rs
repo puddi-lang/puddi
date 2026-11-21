@@ -437,13 +437,13 @@ pub fn compile(sm: &mut SourceMap, files: Vec<UserFile>, root: &str, target: &st
         match res {
             Ok(mut m) => {
                 if pkg == Pkg::Prelude {
-                    sources.push(ModSource { path, pkg, ast: m, prefix: String::new(), aliases: Default::default() });
+                    sources.push(ModSource { path, pkg, ast: m, source_file: None, prefix: String::new(), aliases: Default::default() });
                     continue;
                 }
                 if let Err(e) = with_derives(sm, &mut m, &path) {
                     errs.extend(e);
                 }
-                sources.push(ModSource { path, pkg, ast: m, prefix: "std".into(), aliases: Default::default() });
+                sources.push(ModSource { path, pkg, ast: m, source_file: None, prefix: "std".into(), aliases: Default::default() });
             }
             Err(e) if pkg == Pkg::Prelude => return Err(vec![e]),
             Err(e) => errs.push(e),
@@ -455,6 +455,8 @@ pub fn compile(sm: &mut SourceMap, files: Vec<UserFile>, root: &str, target: &st
     for (f, m) in user_mods {
         match Ok::<ast::Module, Vec<Diag>>(m) {
             Ok(mut m) => {
+                let source_file = m.items.first().map(|item| item.span.file)
+                    .or_else(|| m.imports.first().map(|import| import.span.file));
                 if f.pkg == Pkg::User && f.module == root {
                     for it in &m.items {
                         if let ast::ItemKind::Fn(fd) = &it.kind {
@@ -511,7 +513,10 @@ pub fn compile(sm: &mut SourceMap, files: Vec<UserFile>, root: &str, target: &st
                         }
                     }
                 }
-                sources.push(ModSource { path: f.module.clone(), pkg: f.pkg, ast: m, prefix: f.prefix.clone(), aliases: f.aliases.clone() });
+                sources.push(ModSource {
+                    path: f.module.clone(), pkg: f.pkg, ast: m, source_file,
+                    prefix: f.prefix.clone(), aliases: f.aliases.clone(),
+                });
             }
             Err(e) => errs.extend(e),
         }
