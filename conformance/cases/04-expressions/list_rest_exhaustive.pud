@@ -1,0 +1,19 @@
+// spec: 4.4
+fn classify(xs: List<Int>) -> Str {
+    match xs {
+        [] -> "empty"
+        [_, _] -> "pair"
+        [_, ..rest] -> "{rest.len()} more"
+    }
+}
+
+fn main() {
+    print(classify([]))
+    print(classify([1]))
+    print(classify([1, 2]))
+    print(classify([1, 2, 3]))
+}
+//> empty
+//> 0 more
+//> pair
+//> 2 more
