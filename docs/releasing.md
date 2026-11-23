@@ -12,11 +12,13 @@ Puddi follows [Semantic Versioning](https://semver.org/). During 0.x, a minor re
 2. Set `version` in `Cargo.toml` to the new version, and run `cargo build` so `Cargo.lock` follows.
 3. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and start a new empty `## [Unreleased]` above it. The release notes are taken from this section, so write them for users: language changes, toolchain changes, breaking changes with migration notes, and the known non-conformance from the conformance suite.
 4. Update the version in the `cargo install ... --tag` line of `README.md`.
-5. Commit, then tag and push:
+5. Open a release PR against `main`. A maintainer can enable auto-merge while the required CI checks run.
+6. Once the PR is merged and CI is green on `main`, tag the commit that merged the release PR. Replace `MERGED_COMMIT_SHA` with that commit's SHA and push the tag.
 
    ```sh
-   git tag -a vX.Y.Z -m "Puddi X.Y.Z"
-   git push origin main vX.Y.Z
+   git fetch origin main
+   git tag -a vX.Y.Z MERGED_COMMIT_SHA -m "Puddi X.Y.Z"
+   git push origin vX.Y.Z
    ```
 
 The workflow then:
