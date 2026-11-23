@@ -142,6 +142,7 @@ fn float_impls(s: &mut String, n: &str) {
         let _ = writeln!(s, "    pub fn pow(self, e: F32) -> F32 {{ __cast<Float, F32>(__fmath(0, self, e)) }}");
         let _ = writeln!(s, "    pub fn to_float(self) -> Float {{ self }}");
         let _ = writeln!(s, "    pub fn to_bits(self) -> U32 {{ __reinterpret<F32, U32>(self) }}");
+        let _ = writeln!(s, "    pub fn from_bits(b: U32) -> F32 {{ __reinterpret<U32, F32>(b) }}");
     }
     for m in IntTy::all() {
         let mn = m.name();

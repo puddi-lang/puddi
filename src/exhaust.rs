@@ -14,6 +14,16 @@ enum Ctor {
     ListAtLeast(usize),
 }
 
+impl Ctor {
+    /// Whether a pattern with this constructor can match the candidate.
+    fn covers(&self, candidate: &Self) -> bool {
+        match (self, candidate) {
+            (Self::ListAtLeast(min), Self::ListExact(len) | Self::ListAtLeast(len)) => min <= len,
+            _ => self == candidate,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 enum P {
     Wild,
@@ -173,25 +183,12 @@ fn specialize(row: &[P], c: &Ctor, n: usize) -> Option<Vec<P>> {
     let (head, rest) = row.split_first()?;
     let mut out = match head {
         P::Wild => vec![P::Wild; n],
-        P::C(k, args) => {
-            if k == c {
-                args.clone()
-            } else {
-                match (k, c) {
-                    (Ctor::ListAtLeast(m), Ctor::ListExact(e)) if m <= e => {
-                        let mut a = args.clone();
-                        a.extend(std::iter::repeat_n(P::Wild, e - m));
-                        a
-                    }
-                    (Ctor::ListAtLeast(m), Ctor::ListAtLeast(e)) if m <= e => {
-                        let mut a = args.clone();
-                        a.extend(std::iter::repeat_n(P::Wild, e - m));
-                        a
-                    }
-                    _ => return None,
-                }
-            }
+        P::C(k, args) if k.covers(c) => {
+            let mut fields = args.clone();
+            fields.resize(n, P::Wild);
+            fields
         }
+        P::C(..) => return None,
     };
     out.extend(rest.iter().cloned());
     Some(out)
@@ -228,13 +225,8 @@ fn useful(prog: &Program, m: &[Vec<P>], q: &[P], tys: &[Ty], depth: u32) -> Opti
             let column: Vec<&P> = m.iter().filter_map(|r| r.first()).collect();
             let used: Vec<Ctor> = column.iter().filter_map(|p| if let P::C(c, _) = p { Some(c.clone()) } else { None }).collect();
             let all = all_ctors(prog, ty, &column);
-            let complete = match &all {
-                Some(all) => {
-                    let is_list = all.iter().any(|c| matches!(c, Ctor::ListAtLeast(_)));
-                    if is_list { !used.is_empty() } else { all.iter().all(|c| used.contains(c)) }
-                }
-                None => false,
-            };
+            let covered = |c: &Ctor| used.iter().any(|pattern| pattern.covers(c));
+            let complete = all.as_ref().is_some_and(|ctors| ctors.iter().all(covered));
             if complete {
                 for c in all.unwrap() {
                     let n = arity(prog, ty, &c);
@@ -255,7 +247,7 @@ fn useful(prog: &Program, m: &[Vec<P>], q: &[P], tys: &[Ty], depth: u32) -> Opti
                 let d: Vec<Vec<P>> = m.iter().filter(|r| matches!(r.first(), Some(P::Wild))).map(|r| r[1..].to_vec()).collect();
                 let w = useful(prog, &d, &q[1..], &tys[1..], depth + 1)?;
                 let head = match &all {
-                    Some(all) => match all.iter().find(|c| !used.contains(c)) {
+                    Some(all) => match all.iter().find(|c| !covered(c)) {
                         Some(c) => {
                             let n = arity(prog, ty, c);
                             W::C(c.clone(), ty.clone(), vec![W::Wild; n])

@@ -893,6 +893,14 @@ impl Program {
         }
     }
 
+    /// Returns `(len_index, data_index)` for the `List` struct.
+    pub fn list_field_indices(&self, list_id: AdtId) -> (usize, usize) {
+        let fields = self.struct_fields(list_id);
+        let len_idx = fields.iter().position(|f| f.name == "len").unwrap_or(0);
+        let data_idx = fields.iter().position(|f| f.name == "data").unwrap_or(1);
+        (len_idx, data_idx)
+    }
+
     /// Whether a trait can be used as `dyn Trait`.
     pub fn dyn_compatible(&self, tid: TraitId) -> Result<(), String> {
         for t in self.trait_closure(tid) {

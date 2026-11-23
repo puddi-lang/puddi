@@ -492,8 +492,14 @@ impl<'g, 'p> Elab<'g, 'p> {
                 self.vars[*x as usize].0 = Some(t.clone());
                 true
             }
-            (Ty::Tuple(x), Ty::Tuple(y)) => x.len() == y.len() && x.clone().iter().zip(y.clone().iter()).all(|(p, q)| self.unify(p, q)),
-            (Ty::Adt(i, x), Ty::Adt(j, y)) => i == j && x.clone().iter().zip(y.clone().iter()).all(|(p, q)| self.unify(p, q)),
+            (Ty::Tuple(x), Ty::Tuple(y)) => {
+                let (x, y) = (x.clone(), y.clone());
+                x.len() == y.len() && x.iter().zip(y.iter()).all(|(p, q)| self.unify(p, q))
+            }
+            (Ty::Adt(i, x), Ty::Adt(j, y)) => {
+                let (i, j, x, y) = (*i, *j, x.clone(), y.clone());
+                i == j && x.iter().zip(y.iter()).all(|(p, q)| self.unify(p, q))
+            }
             (Ty::Array(x), Ty::Array(y)) => {
                 let (x, y) = (x.clone(), y.clone());
                 self.unify(&x, &y)
@@ -798,7 +804,13 @@ impl<'g, 'p> Elab<'g, 'p> {
                     Some(t @ (Ty::Int(_) | Ty::Float(_))) => t,
                     _ => self.fresh_kind(VarKind::Int),
                 };
-                mk(ExprKind::Lit(Lit::Int(*n as i128)), ty, span)
+                match i128::try_from(*n) {
+                    Ok(v) => mk(ExprKind::Lit(Lit::Int(v)), ty, span),
+                    Err(_) => {
+                        self.err(span, "integer literal is too large");
+                        mk(ExprKind::Lit(Lit::Int(0)), ty, span)
+                    }
+                }
             }
             ast::ExprKind::Float(f) => {
                 let ty = match expect.map(|t| self.resolve(t)) {
@@ -1049,8 +1061,7 @@ impl<'g, 'p> Elab<'g, 'p> {
             es.push(ie);
         }
         let n = es.len() as i128;
-        let fields = self.prog.struct_fields(list_id);
-        let len_idx = fields.iter().position(|f| f.name == "len").unwrap_or(0);
+        let (len_idx, _) = self.prog.list_field_indices(list_id);
         let mut vals = vec![
             mk(ExprKind::Lit(Lit::Int(n)), INT, span),
             mk(ExprKind::ArrayLit(es), Ty::Array(Box::new(elem.clone())), span),
@@ -1757,7 +1768,13 @@ impl<'g, 'p> Elab<'g, 'p> {
                     Some(t @ (Ty::Int(_) | Ty::Float(_))) => t,
                     _ => self.fresh_kind(VarKind::Int),
                 };
-                return mk(ExprKind::Lit(Lit::Int(-(n as i128))), ty, span);
+                match i128::try_from(n).ok().and_then(|v| v.checked_neg()) {
+                    Some(v) => return mk(ExprKind::Lit(Lit::Int(v)), ty, span),
+                    None => {
+                        self.err(span, "integer literal is too large");
+                        return mk(ExprKind::Lit(Lit::Int(0)), ty, span);
+                    }
+                }
             }
             if let ast::ExprKind::Float(f) = inner.kind {
                 let ty = match expect.map(|t| self.resolve(t)) {
@@ -2363,8 +2380,10 @@ impl<'g, 'p> Elab<'g, 'p> {
         });
         let lv = self.local_expr(bl, span);
         let iv = self.local_expr(il, span);
-        let len = mk(ExprKind::Field(Box::new(lv.clone()), None, 0), int.clone(), span);
-        let data = mk(ExprKind::Field(Box::new(lv), None, 1), Ty::Array(Box::new(elem.clone())), span);
+        let list_id = self.prog.known_adt("List");
+        let (len_idx, data_idx) = self.prog.list_field_indices(list_id);
+        let len = mk(ExprKind::Field(Box::new(lv.clone()), None, len_idx), int.clone(), span);
+        let data = mk(ExprKind::Field(Box::new(lv), None, data_idx), Ty::Array(Box::new(elem.clone())), span);
         let as_u32 = |e: Expr| mk(ExprKind::Cast(Box::new(e)), u32t.clone(), span);
         let cond = mk(ExprKind::Prim(PrimOp::Ge, u32t.clone(), vec![as_u32(iv.clone()), as_u32(len.clone())]), Ty::Bool, span);
         let oob = mk(ExprKind::Call(FnInst { fn_id: self.prog.known_fn("__list_oob"), targs: vec![] }, vec![iv.clone(), len]), Ty::Never, span);

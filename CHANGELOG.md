@@ -4,6 +4,15 @@ All notable changes to Puddi are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- `F32.from_bits` constructs a float from its 32-bit IEEE 754 representation.
+
+### Fixed
+
+- Integer literals too large for the compiler's integer representation report an error instead of wrapping.
+- List pattern exhaustiveness accounts for the exact lengths covered by rest patterns.
+
 ## [0.1.2] - 2026-11-21
 
 ### Added
