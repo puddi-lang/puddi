@@ -231,7 +231,16 @@ fn useful(prog: &Program, m: &[Vec<P>], q: &[P], tys: &[Ty], depth: u32) -> Opti
             let complete = match &all {
                 Some(all) => {
                     let is_list = all.iter().any(|c| matches!(c, Ctor::ListAtLeast(_)));
-                    if is_list { !used.is_empty() } else { all.iter().all(|c| used.contains(c)) }
+                    if is_list {
+                        // List is complete when every exact length and the at-least
+                        // tail are covered by the used patterns (via `specialize`).
+                        all.iter().all(|c| match c {
+                            Ctor::ListAtLeast(_) => used.iter().any(|u| matches!(u, Ctor::ListAtLeast(_))),
+                            _ => used.contains(c),
+                        })
+                    } else {
+                        all.iter().all(|c| used.contains(c))
+                    }
                 }
                 None => false,
             };

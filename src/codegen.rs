@@ -1001,9 +1001,7 @@ impl<'a> Cg<'a> {
             }
             PatKind::List(ps, rest) => {
                 let Ty::Adt(lid, largs) = &p.ty else { return };
-                let fields = self.prog.struct_fields(*lid);
-                let len_i = fields.iter().position(|f| f.name == "len").unwrap_or(0);
-                let data_i = fields.iter().position(|f| f.name == "data").unwrap_or(1);
+                let (len_i, data_i) = self.prog.list_field_indices(*lid);
                 let ln = self.tname(&p.ty);
                 let elem = largs[0].clone();
                 let arr_ty = Ty::Array(Box::new(elem.clone()));
