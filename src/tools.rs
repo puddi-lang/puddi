@@ -122,6 +122,24 @@ mod tests {
         let source = "fn main() {\n    let s = \"first  \nword  \nlast\"\n}\n";
         assert_eq!(super::format(source), source);
     }
+
+    #[test]
+    fn doc_preserves_module_paragraphs() {
+        let source = "// First paragraph.\n// More detail.\n//\n// Second paragraph.\npub fn example() {}\n";
+        assert_eq!(
+            super::doc("example", source).as_deref(),
+            Some("## Module `example`\n\nFirst paragraph. More detail.\n\nSecond paragraph.\n\n### `pub fn example()`\n\n")
+        );
+    }
+
+    #[test]
+    fn doc_ignores_empty_module_paragraphs() {
+        let source = "//\n// First paragraph.\n//\n//\n// Second paragraph.\n//\n";
+        assert_eq!(
+            super::doc("example", source).as_deref(),
+            Some("## Module `example`\n\nFirst paragraph.\n\nSecond paragraph.\n\n")
+        );
+    }
 }
 
 /// Extract documentation for public items as Markdown.
@@ -179,9 +197,13 @@ pub fn doc(module: &str, src: &str) -> Option<String> {
         return None;
     }
     let mut page = format!("## Module `{module}`\n\n");
-    let md: Vec<&String> = module_doc.iter().filter(|l| !l.is_empty()).collect();
-    if !md.is_empty() {
-        page.push_str(&md.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" "));
+    let paragraphs: Vec<String> = module_doc
+        .split(|line| line.is_empty())
+        .filter(|paragraph| !paragraph.is_empty())
+        .map(|paragraph| paragraph.join(" "))
+        .collect();
+    if !paragraphs.is_empty() {
+        page.push_str(&paragraphs.join("\n\n"));
         page.push_str("\n\n");
     }
     page.push_str(&out);
