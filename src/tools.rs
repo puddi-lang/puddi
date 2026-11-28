@@ -124,6 +124,18 @@ mod tests {
     }
 
     #[test]
+    fn format_handles_continuation_with_char_literal() {
+        let source = "fn is_quote(c: Char) -> Bool {\n    c == '\"' || // quote check\n        c == '\\''\n}\n";
+        assert_eq!(super::format(source), source);
+    }
+
+    #[test]
+    fn format_char_literal_comment_does_not_trigger_continuation() {
+        let source = "fn main() {\n    let c = '\"' // check +\n    let next = 1\n}\n";
+        assert_eq!(super::format(source), source);
+    }
+
+    #[test]
     fn doc_preserves_module_paragraphs() {
         let source = "// First paragraph.\n// More detail.\n//\n// Second paragraph.\npub fn example() {}\n";
         assert_eq!(
@@ -257,6 +269,19 @@ fn strip_line_comment(line: &str) -> &str {
         match b[i] {
             b'\\' if in_str => i += 1,
             b'"' => in_str = !in_str,
+            b'\'' if !in_str => {
+                let mut j = i + 1;
+                if b.get(j) == Some(&b'\\') {
+                    j += 2;
+                } else {
+                    j += 1;
+                }
+                while j < b.len() && b[j] != b'\'' {
+                    j += 1;
+                }
+                i = j + 1;
+                continue;
+            }
             b'/' if !in_str && b.get(i + 1) == Some(&b'/') => return line[..i].trim_end(),
             _ => {}
         }
