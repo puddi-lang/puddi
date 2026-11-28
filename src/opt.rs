@@ -19,6 +19,8 @@ use crate::elab::Global;
 use crate::ir::*;
 use crate::types::{AdtId, Ty};
 
+mod tape;
+
 /// Largest callee (in IR nodes) that is inlined.
 const MAX_CALLEE: usize = 600;
 /// A function stops growing once it reaches this size.
@@ -97,11 +99,13 @@ fn optimize(funcs: &[Option<Func>], insts: &HashMap<FnInst, usize>, set_fields: 
         o.analyze(&f.body, &f.params);
         o.changed = false;
         o.rewrite(&mut f.body);
-        if !o.changed {
+        if o.changed {
+            flatten(&mut f.body);
+        }
+        let removed = tape::eliminate(&mut f.body, o.locals.len());
+        if !o.changed && !removed {
             break;
         }
-        flatten(&mut f.body);
-        while dead_lets(&mut f.body, o.locals.len()) {}
         o.size = size(&f.body);
     }
     f.locals = o.locals;
@@ -555,36 +559,14 @@ fn flatten(e: &mut Expr) {
 }
 
 fn pure(e: &Expr) -> bool {
+    if e.ty == Ty::Never {
+        return false;
+    }
     match &e.kind {
         ExprKind::Lit(_) | ExprKind::Local(_) | ExprKind::FnValue(_) | ExprKind::Closure { .. } => true,
         ExprKind::StructNew(a) | ExprKind::TupleNew(a) | ExprKind::EnumNew(_, a) => a.iter().all(pure),
         _ => false,
     }
-}
-
-/// Drops `let`s of unused locals and statements without effects; true if any was dropped.
-fn dead_lets(body: &mut Expr, n: usize) -> bool {
-    let mut uses = vec![0u32; n];
-    visit(body, &mut |e| match &e.kind {
-        ExprKind::Local(id) | ExprKind::SetLocal(id, _) => uses[*id] += 1,
-        ExprKind::Closure { captures, .. } => captures.iter().for_each(|c| uses[*c] += 1),
-        _ => {}
-    });
-    let mut changed = false;
-    fn go(e: &mut Expr, uses: &[u32], changed: &mut bool) {
-        children_mut(e, &mut |c| go(c, uses, changed));
-        if let ExprKind::Block(stmts, _) = &mut e.kind {
-            let before = stmts.len();
-            stmts.retain(|s| match s {
-                Stmt::Let(Pat { kind: PatKind::Bind(id, None), .. }, x) => uses[*id] > 0 || !pure(x),
-                Stmt::Expr(x) => !pure(x),
-                _ => true,
-            });
-            *changed |= stmts.len() != before;
-        }
-    }
-    go(body, &uses, &mut changed);
-    changed
 }
 
 // ---------------- traversal ----------------
@@ -612,7 +594,7 @@ fn children(e: &Expr, f: &mut dyn FnMut(&Expr)) {
             f(recv);
             args.iter().for_each(f);
         }
-        ExprKind::SetField(a, _, b) => {
+        ExprKind::SetField(a, _, b) | ExprKind::ArrayGuard(a, b) => {
             f(a);
             f(b);
         }
@@ -661,7 +643,7 @@ fn children_mut(e: &mut Expr, f: &mut dyn FnMut(&mut Expr)) {
             f(recv);
             args.iter_mut().for_each(f);
         }
-        ExprKind::SetField(a, _, b) => {
+        ExprKind::SetField(a, _, b) | ExprKind::ArrayGuard(a, b) => {
             f(a);
             f(b);
         }

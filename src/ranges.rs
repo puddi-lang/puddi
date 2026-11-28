@@ -198,7 +198,7 @@ pub fn assigned_in(e: &Expr, out: &mut HashSet<LocalId>) {
                 assigned_in(v, out);
             }
         }
-        ExprKind::SetField(a, _, b) => {
+        ExprKind::SetField(a, _, b) | ExprKind::ArrayGuard(a, b) => {
             assigned_in(a, out);
             assigned_in(b, out);
         }

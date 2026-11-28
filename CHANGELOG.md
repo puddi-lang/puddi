@@ -8,6 +8,10 @@ All notable changes to Puddi are recorded here. The format follows [Keep a Chang
 
 - `F32.from_bits` constructs a float from its 32-bit IEEE 754 representation.
 
+### Changed
+
+- The optimizer removes unused value chains with tape-based liveness and keeps bounds traps when discarding scalar array reads.
+
 ### Fixed
 
 - `pud doc` preserves paragraph breaks in module documentation.

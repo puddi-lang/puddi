@@ -3200,7 +3200,7 @@ impl<'g, 'p> Elab<'g, 'p> {
                 }
             }
             ExprKind::Field(b, _, _) => self.fin_expr(b, locals, reported),
-            ExprKind::SetField(b, _, v) => {
+            ExprKind::SetField(b, _, v) | ExprKind::ArrayGuard(b, v) => {
                 self.fin_expr(b, locals, reported);
                 self.fin_expr(v, locals, reported);
             }
