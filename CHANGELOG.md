@@ -14,6 +14,7 @@ All notable changes to Puddi are recorded here. The format follows [Keep a Chang
 
 ### Fixed
 
+- `pud add --name` requires a value instead of silently defaulting.
 - `pud doc` preserves paragraph breaks in module documentation.
 - Integer literals too large for the compiler's integer representation report an error instead of wrapping.
 - List pattern exhaustiveness accounts for the exact lengths covered by rest patterns.

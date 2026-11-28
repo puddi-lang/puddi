@@ -132,3 +132,11 @@ fn plugin_host_capabilities() {
     // the jobs are timed on their own, then the worker answers
     assert!(text.contains(r#"["job2", "job1", "job0", "concurrent true", "worker Some(49)"]"#), "{text}");
 }
+
+#[test]
+fn pud_add_name_requires_value() {
+    let out = pud().args(["add", "foo", "--name"]).output().unwrap();
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("--name needs a value"), "{stderr}");
+}
