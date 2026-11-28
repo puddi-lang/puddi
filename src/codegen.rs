@@ -616,6 +616,21 @@ impl<'a> Cg<'a> {
                 st.emit(&format!("call {n}"));
             }
             ExprKind::Intrinsic(name, targs, args) => self.gen_intrinsic(st, name, targs, args, &e.ty),
+            ExprKind::ArrayGuard(array, index) => {
+                let a = self.temp(st, &array.ty);
+                let i = self.temp(st, &index.ty);
+                self.gen_expr(st, array);
+                st.emit(&format!("local.set {a}"));
+                self.gen_expr(st, index);
+                st.emit(&format!("local.tee {i} local.get {a} array.len i32.ge_u if"));
+                // Take the original Wasm trap on failure. The in-bounds path reads only
+                // the array length, and both operands are evaluated exactly once.
+                let Ty::Array(elem) = &array.ty else { unreachable!("array guard requires an array") };
+                let an = self.tname(&array.ty);
+                let op = self.array_get_op(elem, &an);
+                st.emit(&format!("  local.get {a} local.get {i} {op} drop"));
+                st.emit("end i32.const 0");
+            }
             ExprKind::CallIndirect(f, args) => {
                 let Ty::Fn(ps, r) = &f.ty else {
                     st.emit("unreachable");

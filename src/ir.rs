@@ -76,6 +76,8 @@ pub enum ExprKind {
     SetLocal(LocalId, Box<Expr>),
     Call(FnInst, Vec<Expr>),
     Intrinsic(String, Vec<Ty>, Vec<Expr>),
+    /// Check a scalar array read without fetching its element. Produces unit.
+    ArrayGuard(Box<Expr>, Box<Expr>),
     CallIndirect(Box<Expr>, Vec<Expr>),
     FnValue(FnInst),
     Closure { func: usize, captures: Vec<LocalId> },
