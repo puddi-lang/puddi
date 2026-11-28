@@ -508,7 +508,10 @@ fn main() -> ExitCode {
             "--check" => check_only = true,
             "--name" => {
                 i += 1;
-                name_opt = opts.get(i).cloned();
+                match opts.get(i) {
+                    Some(n) => name_opt = Some(n.clone()),
+                    None => return fail("--name needs a value"),
+                }
             }
             "-o" | "--out" => {
                 i += 1;
